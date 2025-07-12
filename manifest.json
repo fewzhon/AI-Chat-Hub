@@ -1,0 +1,69 @@
+{
+  "manifest_version": 3,
+  "name": "AI Chat Hub",
+  "version": "1.4",
+  "description": "Access multiple AI assistants in Chrome's side panel and manage Gemini settings.",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "contextMenus",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "https://*.google.com/*",
+    "https://*.googleusercontent.com/*",
+    "https://*.gstatic.com/*",
+    "https://consent.google.com/*",
+    "https://accounts.google.com/*",
+    "https://gemini.google.com/*",
+    "https://chatgpt.com/*",
+    "https://*.openai.com/*",
+    "https://auth0.openai.com/*",
+    "https://cdn.oaistatic.com/*",
+    "https://perplexity.ai/*",
+    "https://*.perplexity.ai/*",
+    "https://copilot.microsoft.com/*",
+    "https://*.microsoft.com/*",
+    "https://*.microsoftonline.com/*",
+    "https://*.live.com/*",
+    "https://claude.ai/*",
+    "https://*.anthropic.com/*",
+    "https://*.claude.ai/*",
+    "https://grok.com/*",
+    "https://*.x.com/*",
+    "https://x.com/*",
+	"https://*.x.ai",
+    "https://www.meta.ai/*",
+    "https://*.meta.ai/*",
+    "https://meta.ai/*",
+	"https://*.facebook.com/*",
+    "https://facebook.com/*",
+    "https://*.meta.com/*",
+    "https://meta.com/*"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open AI Chat Hub"
+  }
+}

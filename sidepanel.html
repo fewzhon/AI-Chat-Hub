@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AI Chat Hub</title>
+  <style>
+    /* General Styles */
+    :root { --primary-color: #4285f4; --light-gray: #f0f2f5; --medium-gray: #e4e6eb; --dark-gray: #666; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; height: 100vh; background: var(--light-gray); display: flex; flex-direction: column; overflow: hidden; }
+    .hidden { display: none !important; }
+    .view { flex: 1; overflow-y: auto; }
+
+    /* Main Control Bar */
+    #mainControlBar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+ text-align: center;
+      height: 50px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(5px);
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      z-index: 1001;
+      transform: translateY(-100%);
+      transition: transform 0.3s ease-in-out;
+    }
+    #mainControlBar.is-visible {
+      transform: translateY(0);
+    }
+    .control-bar-button { background: var(--medium-gray); border: none; color: #333; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background 0.2s; }
+    #siteName { font-weight: 600; font-size: 14px; }
+    #mainControlBar > span {
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* Handle for showing/hiding the bar */
+    #showBarHandle {
+      padding: 11px;
+      position: absolute;
+      top: 45px;
+      right: 135px;
+      width: 40px;
+      height: 40px;
+      background: rgba(0,0,0,0.05);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      z-index: 999;
+    }
+     #showBarHandle:hover {
+        background-color: rgba(255, 255, 255, 0.95);
+     }
+    .hamburger-line {
+        width: 18px;
+        height: 2px;
+        background-color: #333;
+        border-radius: 1px;
+        transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    }
+    /* Animate hamburger to 'X' */
+    #showBarHandle.is-open .hamburger-line:nth-child(1) {
+        transform: translateY(6px) rotate(45deg);
+    }
+    #showBarHandle.is-open .hamburger-line:nth-child(2) {
+        opacity: 0;
+    }
+    #showBarHandle.is-open .hamburger-line:nth-child(3) {
+        transform: translateY(-6px) rotate(-45deg);
+    }
+
+    /* Welcome Screen & Split Cards */
+    .welcome-screen-content { padding: 20px; text-align: center; }
+    .welcome-screen-content h2 { margin-bottom: 8px; font-size: 20px; font-weight: 600; }
+    .welcome-screen-content > p { color: var(--dark-gray); margin-bottom: 24px; font-size: 14px; }
+    
+    /* Split Cards Container */
+    .option-cards { display: flex; flex-direction: column; gap: 12px; }
+    .option-card-container { 
+      display: flex; 
+      gap: 8px; 
+      align-items: stretch;
+    }
+    
+    /* Main AI Service Card (70% width) */
+    .option-card { 
+      background: white; 
+      border: 1px solid #ddd; 
+      border-radius: 8px; 
+      padding: 16px; 
+      text-align: left; 
+      transition: all 0.2s; 
+      cursor: pointer; 
+      flex: 1;
+      min-width: 0;
+    }
+    .option-card:hover { 
+      border-color: var(--primary-color); 
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+    }
+    .option-card h3 { font-size: 15px; margin-bottom: 4px; font-weight: 600; }
+    .option-card p { color: var(--dark-gray); font-size: 13px; line-height: 1.4; }
+
+    /* New Tab Button (30% width) */
+    .new-tab-button {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 80px;
+      max-width: 120px;
+      flex-shrink: 0;
+      text-decoration: none;
+      color: var(--dark-gray);
+    }
+    .new-tab-button:hover {
+      border-color: var(--primary-color);
+      background-color: #f8f9ff;
+      color: var(--primary-color);
+    }
+    .new-tab-button:hover .new-tab-icon {
+      transform: scale(1.1);
+    }
+	.new-tab-icon {
+      font-size: 20px;
+      transition: transform 0.2s;
+    }
+
+    /* Web & Chat Containers */
+    .web-container, .chat-container { height: 100%; }
+    #webFrame { width: 100%; height: 100%; border: none; }
+    
+    /* API Key Setup */
+    .api-key-setup-content { padding: 24px; text-align: center; }
+ .api-key-setup-content h2 { font-size: 18px; margin-bottom: 12px; margin-top: 40px;}
+    .api-key-setup-content p { font-size: 14px; color: var(--dark-gray); line-height: 1.5; margin-bottom: 16px; }
+    .api-key-setup-content a { color: var(--primary-color); text-decoration: none; }
+    .api-key-setup-content a:hover { text-decoration: underline; }
+    #apiKeyInput { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+    /*.api-buttons { display: flex; flex-direction: column; gap: 8px; }*/
+    /*.api-buttons button { padding: 12px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid transparent; }*/
+    
+	/* API Card Styles */
+.api-card {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 80px;
+  max-width: 120px;
+  flex-shrink: 0;
+  text-decoration: none;
+  color: var(--dark-gray);
+  gap: 4px;
+}
+
+.api-card:hover {
+  border-color: #ff9800;
+  background-color: #fff8f0;
+  color: #ff9800;
+}
+
+.api-card:hover .api-icon {
+  transform: scale(1.1);
+}
+
+.api-icon {
+  font-size: 16px;
+  transition: transform 0.2s;
+}
+
+.api-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Expanded API Card Container */
+.option-card-container.api-expanded {
+  background: white;
+  border: 1px solid #ff9800;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 8px 0;
+  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.option-card-container.api-expanded .option-card {
+  flex: 0.3;
+  opacity: 0.7;
+  transform: scale(0.95);
+}
+
+.option-card-container.api-expanded .new-tab-button {
+  flex: 0.2;
+  opacity: 0.7;
+  transform: scale(0.95);
+}
+
+.option-card-container.api-expanded .api-card {
+  flex: 1;
+  max-width: none;
+  min-height: 120px;
+  background: #fff8f0;
+  border-color: #ff9800;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+
+/* API Form Styles */
+.api-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.api-form input {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 100%;
+}
+
+.api-form input:focus {
+  outline: none;
+  border-color: #ff9800;
+}
+
+.api-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.api-buttons button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.api-save-btn {
+  background: #ff9800;
+  color: white;
+}
+
+.api-save-btn:hover {
+  background: #f57c00;
+}
+
+.api-clear-btn {
+  background: #f44336;
+  color: white;
+}
+
+.api-clear-btn:hover {
+  background: #d32f2f;
+}
+
+.api-back-btn {
+  background: var(--medium-gray);
+  color: #333;
+}
+
+.api-back-btn:hover {
+  background: #d5d7dc;
+}
+
+/* Collapsed state for other cards when API is expanded */
+.option-cards.api-expanded .option-card-container:not(.api-expanded) {
+  opacity: 0.6;
+  transform: scale(0.98);
+}
+	
+	#saveApiKeyBtn { background: var(--primary-color); color: white; }
+    #backToOptionsFromApi { background: var(--medium-gray); }
+
+    /* Chat specific styles */
+    .chat-container { display: flex; flex-direction: column; }
+    .messages { flex: 1; overflow-y: auto; padding: 16px; }
+    .message { display: flex; margin-bottom: 12px; max-width: 85%; }
+    .message.user { margin-left: auto; flex-direction: row-reverse; }
+    .message .icon { width: 30px; height: 30px; border-radius: 50%; background: var(--medium-gray); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; margin: 0 8px; }
+    .message.user .icon { background: var(--primary-color); color: white; }
+    .message .content { background: white; padding: 10px 14px; border-radius: 18px; word-wrap: break-word; }
+    .message.user .content { background: var(--primary-color); color: white; }
+    .input-container { padding: 12px; background: #fff; border-top: 1px solid #ddd; display: flex; gap: 8px; align-items: center; }
+    #messageInput { flex: 1; padding: 10px 14px; border: 1px solid #ccc; border-radius: 20px; font-size: 14px; outline: none; resize: none; }
+    #sendBtn { background: var(--primary-color); color: white; border: none; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+    
+    /* Settings Modal Styles */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000; }
+    .modal-content { background: white; padding: 24px; border-radius: 8px; width: 90%; max-width: 400px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .modal-header h2 { font-size: 18px; }
+    #closeSettingsBtn { font-size: 24px; background: none; border: none; cursor: pointer; color: #888; }
+    .setting-item { display: flex; flex-direction: column; padding: 12px 0; border-bottom: 1px solid #eee; }
+    .setting-item:last-child { border-bottom: none; }
+    .setting-item-header { display: flex; justify-content: space-between; align-items: center; }
+    .setting-label h3 { font-size: 14px; font-weight: 500; }
+    .setting-label p { font-size: 12px; color: var(--dark-gray); }
+    .setting-item button { margin-top: 10px; background: var(--medium-gray); border: 1px solid #ccc; padding: 8px; border-radius: 6px; cursor: pointer; }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--primary-color); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* Responsive adjustments */
+    @media (max-width: 400px) {
+      .option-card-container {
+        flex-direction: column;
+      }
+      .new-tab-button {
+        max-width: none;
+        min-width: 0;
+        flex: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  
+  <div id="mainControlBar">
+    <button id="backBtn" class="control-bar-button">Back</button>
+    <span id="siteName"></span>
+    <div><button id="reloadButton" class="control-bar-button">Reload</button></div>
+    <button id="settingsBtn" class="control-bar-button">Settings</button>
+    <div id="showBarHandle" class="hidden">
+      <div class="hamburger-line"></div>
+      <div class="hamburger-line"></div>
+      <div class="hamburger-line"></div>
+    </div>
+  </div>
+
+  <div id="welcomeScreen" class="view">
+    <div class="welcome-screen-content">
+      <h2>AI Chat Hub</h2>
+      <p>Choose your AI assistant.</p>
+      <div class="option-cards">
+        <div class="option-card-container">
+          <div class="option-card" data-site="api">
+            <h3>✨ Quick Chat (API)</h3>
+            <p>Chat directly with the Gemini API.</p>
+          </div>
+
+        </div>
+        
+        <div class="option-card-container">
+          <div class="option-card" data-site="gemini">
+            <h3>🤖 Gemini</h3>
+            <p>Google's advanced AI assistant</p>
+          </div>
+          <div class="api-card" data-site="gemini" title="Use Gemini API">
+		    <span class="api-icon">🔑</span>
+		    <span class="api-label">API</span>
+		  </div>
+		  <div class="new-tab-button" data-url="https://gemini.google.com" title="Open Gemini in new tab">
+		    <span class="new-tab-icon">↗</span>
+		  </div>
+		</div>
+        
+        <div class="option-card-container">
+          <div class="option-card" data-site="chatgpt">
+            <h3>💬 ChatGPT</h3>
+            <p>OpenAI's conversational AI</p>
+          </div>
+          <div class="api-card" data-site="chatgpt" title="Use ChatGPT API">
+		    <span class="api-icon">🔑</span>
+		    <span class="api-label">API</span>
+		  </div>
+		  <div class="new-tab-button" data-url="https://chatgpt.com" title="Open ChatGPT in new tab">
+		    <span class="new-tab-icon">↗</span>
+		  </div>
+		</div>
+        
+        <div class="option-card-container">
+          <div class="option-card" data-site="perplexity">
+            <h3>🔍 Perplexity</h3>
+            <p>AI-powered search and answers</p>
+          </div>
+		  <div class="api-card" data-site="perplexity" title="Use Perplexity API">
+		    <span class="api-icon">🔑</span>
+		    <span class="api-label">API</span>
+		  </div>
+		  <div class="new-tab-button" data-url="https://perplexity.com" title="Open Perplexity in new tab">
+		    <span class="new-tab-icon">↗</span>
+		  </div>
+		</div>
+        
+        <div class="option-card-container">
+          <div class="option-card" data-site="copilot">
+            <h3>🚀 Copilot</h3>
+            <p>Microsoft's AI assistant</p>
+          </div>
+          <div class="api-card" data-site="copilot" title="Use Copilot API">
+		    <span class="api-icon">🔑</span>
+		    <span class="api-label">API</span>
+		  </div>
+		  <div class="new-tab-button" data-url="https://copilot.microsoft.com" title="Open Copilot in new tab">
+		    <span class="new-tab-icon">↗</span>
+		  </div>
+		</div>
+        
+        <div class="option-card-container">
+          <div class="option-card" data-site="claude">
+            <h3>🧠 Claude</h3>
+            <p>Anthropic's helpful AI assistant</p>
+          </div>
+		  <div class="api-card" data-site="claude" title="Use Claude API">
+		    <span class="api-icon">🔑</span>
+		    <span class="api-label">API</span>
+		  </div>
+		  <div class="new-tab-button" data-url="https://claude.ai" title="Open Claude in new tab">
+		    <span class="new-tab-icon">↗</span>
+		  </div>
+		</div>		
+
+        <div class="option-card-container">
+          <div class="option-card" data-site="grok">
+            <h3>🌟 Grok</h3>
+            <p>AI from xAI</p>
+          </div>
+		  <div class="api-card" data-site="grok" title="Use Grok API">
+		    <span class="api-icon">🔑</span>
+		    <span class="api-label">API</span>
+		  </div>
+		  <div class="new-tab-button" data-url="https://grok.com" title="Open Grok in new tab">
+		    <span class="new-tab-icon">↗</span>
+		  </div>
+		</div>
+		
+        <div class="option-card-container">
+		  <div class="option-card" data-site="meta">
+            <h3>🔮 Meta AI</h3>
+            <p>Meta's AI assistant</p>
+          </div>
+		  <div class="api-card" data-site="meta" title="Use Meta API">
+		    <span class="api-icon">🔑</span>
+		    <span class="api-label">API</span>
+		  </div>
+		  <div class="new-tab-button" data-url="https://meta.ai" title="Open Meta in new tab">
+		    <span class="new-tab-icon">↗</span>
+		  </div>
+		</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="webContainer" class="view hidden">
+    <iframe id="webFrame" src="" frameborder="0"></iframe>
+  </div>
+
+  <div id="apiKeySetup" class="view hidden">
+    <div class="api-key-setup-content">
+      <h2>Setup Gemini API</h2>
+      <p>To use Quick Chat, please enter your Gemini API key. You can get a key from <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>.</p>
+      <input type="password" id="apiKeyInput" placeholder="Enter your Gemini API key">
+      <div class="api-buttons">
+        <button id="saveApiKeyBtn">Save and Start Chatting</button>
+        <button id="backToOptionsFromApi">Back to Options</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="chatContainer" class="view hidden">
+    <div class="messages" id="messages"></div>
+    <div class="input-container">
+      <textarea id="messageInput" placeholder="Type your message..." rows="1"></textarea>
+      <button id="sendBtn" title="Send Message">➤</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button id="closeSettingsBtn">&times;</button>
+      </div>
+      <div class="setting-item">
+        <div class="setting-item-header">
+            <div class="setting-label">
+              <h3>Gemini Enter Key Blocker</h3>
+              <p>Prevents accidental submission on Gemini website.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggleBlocker">
+              <span class="slider"></span>
+            </label>
+        </div>
+      </div>
+      <div class="setting-item">
+        <div class="setting-label">
+            <h3>Gemini API Key</h3>
+            <p>Used for the "Quick Chat" feature.</p>
+        </div>
+        <button id="changeApiKeyBtn">Change API Key</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

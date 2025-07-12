@@ -1,0 +1,65 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        {
+          "header": "x-frame-options",
+          "operation": "remove"
+        },
+        {
+          "header": "X-Frame-Options",
+          "operation": "remove"
+        },
+        {
+          "header": "content-security-policy",
+          "operation": "remove"
+        },
+        {
+          "header": "Content-Security-Policy",
+          "operation": "remove"
+        },
+        {
+          "header": "content-security-policy-report-only",
+          "operation": "remove"
+        }
+      ]
+    },
+    "condition": {
+      "requestDomains": [
+        "google.com",
+        "googleusercontent.com",
+        "gstatic.com",
+        "consent.google.com",
+        "accounts.google.com",
+        "chatgpt.com",
+        "openai.com",
+        "auth0.openai.com",
+        "cdn.oaistatic.com",
+        "perplexity.ai",
+        "copilot.microsoft.com",
+        "microsoft.com",
+        "microsoftonline.com",
+        "live.com",
+        "claude.ai",
+        "anthropic.com",
+        "grok.com",
+        "x.com",
+		"x.ai",
+		"meta.ai",
+		"meta.com",
+		"facebook.com"
+      ],
+      "resourceTypes": [
+        "main_frame",
+        "sub_frame",
+        "xmlhttprequest",
+        "script",
+        "stylesheet",
+        "image"
+      ]
+    }
+  }
+]
