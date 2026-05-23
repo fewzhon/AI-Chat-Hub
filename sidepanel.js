@@ -1,391 +1,524 @@
 // sidepanel.js
+//
+// AI Chat Hub - side panel controller.
+//
+// Architecture:
+//   - SITE_CONFIGS is the single source of truth for every AI service. It
+//     drives the persistent tab bar (top of the side panel) AND the welcome
+//     screen cards. Add a new entry here and the rest of the UI follows.
+//   - The AiChatHub class owns view routing, theme management, settings,
+//     iframe lifecycle handling, and per-site key storage.
+//   - View routing is centralized in `showView(viewName, siteKey)`. Tabs in
+//     the top tab bar map directly to view changes.
+//
+// Theme handling supports three values stored under
+// `chrome.storage.sync.themePreference`: 'light', 'dark', or 'system'.
+// When 'system' is selected we follow `prefers-color-scheme` and live-update
+// on system changes.
+
+const SITE_CONFIGS = {
+  // Direct API chat (no iframe).
+  api: {
+    name: 'Quick Chat',
+    icon: '✨',
+    description: 'Chat directly with the Gemini API',
+    kind: 'api',
+  },
+
+  // ------ Existing iframe-based services -------------------------------
+  gemini: {
+    name: 'Gemini',
+    icon: '🤖',
+    description: "Google's advanced AI assistant",
+    url: 'https://gemini.google.com/',
+    fallbackUrls: ['https://gemini.google.com/app', 'https://bard.google.com/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  chatgpt: {
+    name: 'ChatGPT',
+    icon: '💬',
+    description: "OpenAI's conversational AI",
+    url: 'https://chatgpt.com/',
+    fallbackUrls: ['https://chat.openai.com/', 'https://platform.openai.com/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  perplexity: {
+    name: 'Perplexity',
+    icon: '🔍',
+    description: 'AI-powered search and answers',
+    url: 'https://www.perplexity.ai/',
+    fallbackUrls: ['https://perplexity.ai/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  copilot: {
+    name: 'Copilot',
+    icon: '🚀',
+    description: "Microsoft's AI assistant",
+    url: 'https://copilot.microsoft.com/chats',
+    fallbackUrls: ['https://copilot.microsoft.com/', 'https://www.bing.com/chat'],
+    embeddable: true,
+    kind: 'web',
+  },
+  claude: {
+    name: 'Claude',
+    icon: '🧠',
+    description: "Anthropic's helpful AI assistant",
+    url: 'https://claude.ai/new',
+    fallbackUrls: ['https://claude.ai/', 'https://claude.ai/chats'],
+    embeddable: true,
+    kind: 'web',
+  },
+  grok: {
+    name: 'Grok',
+    icon: '🌟',
+    description: 'AI from xAI',
+    url: 'https://grok.com/',
+    fallbackUrls: ['https://x.com/i/grok', 'https://accounts.x.ai/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  meta: {
+    name: 'Meta AI',
+    icon: '🔮',
+    description: "Meta's AI assistant",
+    url: 'https://www.meta.ai/',
+    fallbackUrls: ['https://meta.ai/', 'https://ai.meta.com/'],
+    embeddable: true,
+    kind: 'web',
+  },
+
+  // ------ New AI services added in v1.5 --------------------------------
+  deepseek: {
+    name: 'DeepSeek',
+    icon: '🐋',
+    description: 'DeepSeek chat',
+    url: 'https://chat.deepseek.com/',
+    fallbackUrls: ['https://www.deepseek.com/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  mistral: {
+    name: 'Mistral',
+    icon: '🌫️',
+    description: "Mistral's Le Chat",
+    url: 'https://chat.mistral.ai/chat',
+    fallbackUrls: ['https://chat.mistral.ai/', 'https://mistral.ai/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  poe: {
+    name: 'Poe',
+    icon: '🦜',
+    description: "Quora's multi-model AI",
+    url: 'https://poe.com/',
+    fallbackUrls: ['https://www.poe.com/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  you: {
+    name: 'You.com',
+    icon: '🟣',
+    description: 'You.com AI search',
+    url: 'https://you.com/',
+    fallbackUrls: ['https://www.you.com/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  qwen: {
+    name: 'Qwen',
+    icon: '🦅',
+    description: "Alibaba's Qwen Chat",
+    url: 'https://chat.qwen.ai/',
+    fallbackUrls: ['https://qwen.ai/', 'https://tongyi.aliyun.com/qianwen/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  kimi: {
+    name: 'Kimi',
+    icon: '🌙',
+    description: "Moonshot AI's Kimi",
+    url: 'https://www.kimi.com/',
+    fallbackUrls: ['https://kimi.moonshot.cn/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  zai: {
+    name: 'Z.ai',
+    icon: '⚡',
+    description: 'Zhipu GLM chat',
+    url: 'https://chat.z.ai/',
+    fallbackUrls: ['https://z.ai/'],
+    embeddable: true,
+    kind: 'web',
+  },
+  genspark: {
+    name: 'Genspark',
+    icon: '✦',
+    description: 'Genspark AI agent',
+    url: 'https://www.genspark.ai/',
+    fallbackUrls: ['https://genspark.ai/'],
+    embeddable: true,
+    kind: 'web',
+  },
+};
+
+// Display order in tabs and on the welcome screen. Edit this to reorder
+// without changing the config objects themselves.
+const TAB_ORDER = [
+  'api',
+  'gemini',
+  'chatgpt',
+  'claude',
+  'perplexity',
+  'copilot',
+  'grok',
+  'meta',
+  'deepseek',
+  'mistral',
+  'poe',
+  'you',
+  'qwen',
+  'kimi',
+  'zai',
+  'genspark',
+];
+
 class AiChatHub {
   constructor() {
-    // Use a helper to safely get elements
-    const getEl = (id) => document.getElementById(id);
-
+    const $ = (id) => document.getElementById(id);
     this.elements = {
-      // Views
-      welcomeScreen: getEl('welcomeScreen'),
-      webContainer: getEl('webContainer'),
-      apiKeySetup: getEl('apiKeySetup'),
-      chatContainer: getEl('chatContainer'),
-      // Main Controls
-      mainControlBar: getEl('mainControlBar'),
-      showBarHandle: getEl('showBarHandle'),
-      backBtn: getEl('backBtn'),
-      siteName: getEl('siteName'),
-      reloadButton: getEl('reloadButton'),
-      // Web View
-      webFrame: getEl('webFrame'),
-      // API Setup
-      apiKeyInput: getEl('apiKeyInput'),
-      saveApiKeyBtn: getEl('saveApiKeyBtn'),
-      backToOptionsFromApi: getEl('backToOptionsFromApi'),
-      // Chat View
-      messageInput: getEl('messageInput'),
-      sendBtn: getEl('sendBtn'),
-      messages: getEl('messages'),
-      // Settings Modal
-      settingsBtn: getEl('settingsBtn'),
-      settingsModal: getEl('settingsModal'),
-      closeSettingsBtn: getEl('closeSettingsBtn'),
-      toggleBlocker: getEl('toggleBlocker'),
-      changeApiKeyBtn: getEl('changeApiKeyBtn'),
-    };
+      // Tab bar
+      tabBar: $('tabBar'),
+      tabStrip: $('tabStrip'),
+      homeTabBtn: $('homeTabBtn'),
+      reloadTabBtn: $('reloadTabBtn'),
+      settingsTabBtn: $('settingsTabBtn'),
 
-    this.siteConfigs = {
-      api: { name: '✨ Quick Chat' },
-      gemini: { 
-        url: 'https://gemini.google.com/', 
-        name: '🤖 Gemini',
-        fallbackUrls: ['https://gemini.google.com/app', 'https://bard.google.com/'],
-        embeddable: true
-      },
-      chatgpt: { 
-        url: 'https://chatgpt.com/', 
-        name: '💬 ChatGPT',
-        fallbackUrls: ['https://chat.openai.com/', 'https://platform.openai.com/'],
-        embeddable: true
-      },
-      perplexity: { 
-        url: 'https://www.pplx.ai', 
-        name: '🔍 Perplexity',
-        fallbackUrls: ['https://perplexity.ai/'],
-        embeddable: true,
-        reason: 'Strict CSP policy'
-      },
-      copilot: { 
-        url: 'https://copilot.microsoft.com/chats', 
-        name: '🚀 Copilot',
-        fallbackUrls: ['https://copilot.microsoft.com/', 'https://www.bing.com/chat'],
-        embeddable: true
-      },
-      claude: { 
-        url: 'https://claude.ai/new', 
-        name: '🧠 Claude',
-        fallbackUrls: ['https://claude.ai/', 'https://claude.ai/chats'],
-        embeddable: true
-      },
-      grok: {
-        url: 'https://grok.com/', // Replace with actual Grok URL if different
-        name: '☀️ Grok',
-        fallbackUrls: ['https://x.com/','https://accounts.x.ai'],
-        embeddable: true // Assume embeddable, adjust if needed
-      },
-      meta: {
-        url: 'https://meta.ai/', // Replace with actual Meta AI URL if different
-        name: '✨ Meta AI',
-        fallbackUrls: ['https://ai.meta.com/', 'https://www.facebook.com/'],
-        embeddable: true // Assume embeddable, adjust if needed
-      },
+      // Service control bar
+      serviceControlBar: $('serviceControlBar'),
+      siteName: $('siteName'),
+      openInTabBtn: $('openInTabBtn'),
+
+      // Views
+      welcomeScreen: $('welcomeScreen'),
+      webContainer: $('webContainer'),
+      apiKeySetup: $('apiKeySetup'),
+      chatContainer: $('chatContainer'),
+
+      // Welcome card containers
+      apiCards: $('apiCards'),
+      webCards: $('webCards'),
+
+      // Web view
+      webFrame: $('webFrame'),
+
+      // API setup
+      apiKeyInput: $('apiKeyInput'),
+      saveApiKeyBtn: $('saveApiKeyBtn'),
+      backToOptionsFromApi: $('backToOptionsFromApi'),
+
+      // Chat view
+      messageInput: $('messageInput'),
+      sendBtn: $('sendBtn'),
+      messages: $('messages'),
+
+      // Settings modal
+      settingsModal: $('settingsModal'),
+      closeSettingsBtn: $('closeSettingsBtn'),
+      themeSegmented: $('themeSegmented'),
+      toggleBlocker: $('toggleBlocker'),
+      changeApiKeyBtn: $('changeApiKeyBtn'),
     };
 
     this.apiKey = null;
     this.chatHistory = [];
     this.loadAttempts = {};
+    this.currentSiteKey = null;
+    this.themePreference = 'system';
+    this.systemThemeMql = window.matchMedia('(prefers-color-scheme: dark)');
+
     this.init();
   }
 
   async init() {
+    this.renderWelcomeCards();
+    this.renderTabBar();
     this.setupEventListeners();
     await this.loadSettings();
     await this.loadLastState();
   }
 
-  setupEventListeners() {
-    // Show/Hide main control bar via handle
-    this.elements.showBarHandle.addEventListener('click', () => {
-      this.elements.mainControlBar.classList.toggle('is-visible');
-      this.elements.showBarHandle.classList.toggle('is-open');
-    });
+  // ------------------------------------------------------------------
+  // Rendering
+  // ------------------------------------------------------------------
 
-    // Option selection from welcome screen
-    document.querySelectorAll('.option-card').forEach(card => {
-      card.addEventListener('click', () => this.handleOptionClick(card.dataset.site));
-    });
-	  
-	// API Card event listeners
-document.querySelectorAll('.api-card').forEach(apiCard => {
-  apiCard.addEventListener('click', (e) => {
-    e.stopPropagation(); // Prevent triggering the main card click
-    const siteKey = apiCard.dataset.site;
-    const container = apiCard.closest('.option-card-container');
-    
-    if (container.classList.contains('api-expanded')) {
-      // If already expanded, collapse
-      this.collapseApiCard(container);
-    } else {
-      // Expand this API card
-      this.expandApiCard(container, siteKey);
+  renderTabBar() {
+    const strip = this.elements.tabStrip;
+    strip.innerHTML = '';
+
+    for (const key of TAB_ORDER) {
+      const cfg = SITE_CONFIGS[key];
+      if (!cfg) continue;
+      const btn = document.createElement('button');
+      btn.className = 'tab';
+      btn.dataset.siteKey = key;
+      btn.setAttribute('role', 'tab');
+      btn.title = cfg.name;
+      btn.innerHTML = `
+        <span class="tab-icon" aria-hidden="true">${cfg.icon}</span>
+        <span class="tab-label">${cfg.name}</span>
+      `;
+      btn.addEventListener('click', () => this.handleOptionClick(key));
+      strip.appendChild(btn);
     }
-  });
-});
+  }
 
-    // FIXED: Open in new tab functionality - updated to use correct class name
-    document.querySelectorAll('.new-tab-button').forEach(newTabButton => {
-      newTabButton.addEventListener('click', (event) => {
-        event.stopPropagation(); // Prevent the click from triggering the parent card
-        const url = newTabButton.dataset.url;
-        if (url) {
-          chrome.tabs.create({ url: url });
-        }
-      });
-    });
+  renderWelcomeCards() {
+    const apiContainer = this.elements.apiCards;
+    const webContainer = this.elements.webCards;
+    apiContainer.innerHTML = '';
+    webContainer.innerHTML = '';
 
-    // Reload button
-    this.elements.reloadButton.addEventListener('click', () => {
-      if (this.elements.webFrame.src) {
-        this.elements.webFrame.src = this.elements.webFrame.src; // Reloads the iframe
+    for (const key of TAB_ORDER) {
+      const cfg = SITE_CONFIGS[key];
+      if (!cfg) continue;
+
+      const row = document.createElement('div');
+      row.className = 'option-card-container';
+
+      const card = document.createElement('div');
+      card.className = 'option-card';
+      card.dataset.site = key;
+      card.innerHTML = `
+        <span class="card-icon">${cfg.icon}</span>
+        <div class="card-text">
+          <h3>${cfg.name}</h3>
+          <p>${cfg.description}</p>
+        </div>
+      `;
+      card.addEventListener('click', () => this.handleOptionClick(key));
+      row.appendChild(card);
+
+      if (cfg.kind === 'web' && cfg.url) {
+        const newTabBtn = document.createElement('button');
+        newTabBtn.className = 'new-tab-button';
+        newTabBtn.title = `Open ${cfg.name} in a new browser tab`;
+        newTabBtn.innerHTML = '<span class="new-tab-icon">↗</span>';
+        newTabBtn.addEventListener('click', (event) => {
+          event.stopPropagation();
+          chrome.tabs.create({ url: cfg.url });
+        });
+        row.appendChild(newTabBtn);
       }
+
+      if (cfg.kind === 'api') apiContainer.appendChild(row);
+      else webContainer.appendChild(row);
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Event wiring
+  // ------------------------------------------------------------------
+
+  setupEventListeners() {
+    this.elements.homeTabBtn.addEventListener('click', () => this.showWelcomeScreen());
+
+    this.elements.reloadTabBtn.addEventListener('click', () => this.reloadCurrentView());
+
+    this.elements.settingsTabBtn.addEventListener('click', () => this.openSettings());
+
+    this.elements.openInTabBtn.addEventListener('click', () => {
+      const cfg = SITE_CONFIGS[this.currentSiteKey];
+      if (cfg && cfg.url) chrome.tabs.create({ url: cfg.url });
     });
 
-    // Control bar buttons
-    this.elements.backBtn.addEventListener('click', () => this.showWelcomeScreen());
-    this.elements.settingsBtn.addEventListener('click', () => this.openSettings());
-
-    // API Setup buttons
+    // API setup
     this.elements.backToOptionsFromApi.addEventListener('click', () => this.showWelcomeScreen());
     this.elements.saveApiKeyBtn.addEventListener('click', () => this.saveApiKey());
 
-    // Settings Modal listeners
+    // Settings modal
     this.elements.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
     this.elements.settingsModal.addEventListener('click', (e) => {
-        if (e.target === this.elements.settingsModal) this.closeSettings();
+      if (e.target === this.elements.settingsModal) this.closeSettings();
     });
     this.elements.toggleBlocker.addEventListener('change', (e) => {
       this.saveSetting('geminiBlockEnabled', e.target.checked, 'sync');
     });
     this.elements.changeApiKeyBtn.addEventListener('click', () => {
-        this.closeSettings();
-        this.showView('apiKeySetup', 'api');
+      this.closeSettings();
+      this.showView('apiKeySetup', 'api');
     });
 
-    // Enhanced iframe error handling
+    // Theme segmented control
+    this.elements.themeSegmented.querySelectorAll('button[data-theme-value]').forEach((btn) => {
+      btn.addEventListener('click', () => this.setTheme(btn.dataset.themeValue));
+    });
+
+    // Live-update theme when system preference changes (only if user picked 'system')
+    this.systemThemeMql.addEventListener('change', () => {
+      if (this.themePreference === 'system') this.applyTheme();
+    });
+
+    // Iframe lifecycle
     this.elements.webFrame.addEventListener('load', () => this.handleFrameLoad());
     this.elements.webFrame.addEventListener('error', (e) => this.handleFrameError(e));
-    
-    // Listen for CSP violations
+
+    // CSP violations (best-effort detection of frame-ancestors blocks)
     document.addEventListener('securitypolicyviolation', (e) => this.handleCSPViolation(e));
-    
-    // Monitor for frame loading issues
-    this.setupFrameMonitoring();
   }
 
-  setupFrameMonitoring() {
-  this.frameLoadTimeout = null;
-  
-  // Monitor frame load events
-  this.elements.webFrame.addEventListener('load', () => {
-    if (this.frameLoadTimeout) {
-      clearTimeout(this.frameLoadTimeout);
-      this.frameLoadTimeout = null;
-    }
-    this.handleFrameLoad();
-  });
-  
-  // Monitor frame error events
-  this.elements.webFrame.addEventListener('error', (e) => {
-    if (this.frameLoadTimeout) {
-      clearTimeout(this.frameLoadTimeout);
-      this.frameLoadTimeout = null;
-    }
-    this.handleFrameError(e);
-  });
-}
+  // ------------------------------------------------------------------
+  // View routing
+  // ------------------------------------------------------------------
 
-  handleCSPViolation(event) {
-  console.log('CSP Violation detected:', event);
-  
-  // Check if this is a frame-ancestors violation (most common for embedding restrictions)
-  if (event.violatedDirective && (
-    event.violatedDirective.includes('frame-ancestors') ||
-    event.violatedDirective.includes('frame-src')
-  )) {
-    const blockedUrl = event.blockedURI || event.documentURI || event.sourceFile;
-    console.log('Frame embedding violation for:', blockedUrl);
-    
-    // Find which site this relates to
-    const siteKey = this.findSiteKeyByUrl(blockedUrl);
+  showView(viewName, siteKey) {
+    document.querySelectorAll('.view').forEach((v) => v.classList.add('hidden'));
+    if (this.elements[viewName]) this.elements[viewName].classList.remove('hidden');
+
+    const cfg = siteKey ? SITE_CONFIGS[siteKey] : null;
+    if (cfg && viewName !== 'welcomeScreen') {
+      this.elements.serviceControlBar.classList.remove('hidden');
+      this.elements.siteName.textContent = `${cfg.icon} ${cfg.name}`;
+      // Hide "Open in tab" for the API view since it has no URL.
+      this.elements.openInTabBtn.classList.toggle('hidden', cfg.kind !== 'web');
+      this.currentSiteKey = siteKey;
+    } else {
+      this.elements.serviceControlBar.classList.add('hidden');
+      this.currentSiteKey = null;
+    }
+
+    this.updateActiveTab(siteKey);
+  }
+
+  updateActiveTab(siteKey) {
+    this.elements.tabStrip.querySelectorAll('.tab').forEach((btn) => {
+      btn.classList.toggle('is-active', btn.dataset.siteKey === siteKey);
+    });
+
     if (siteKey) {
-      this.markSiteAsNonEmbeddable(siteKey, 'CSP frame-ancestors policy');
+      const activeBtn = this.elements.tabStrip.querySelector(`.tab[data-site-key="${siteKey}"]`);
+      if (activeBtn) activeBtn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   }
-}
 
+  handleOptionClick(siteKey) {
+    const cfg = SITE_CONFIGS[siteKey];
+    if (!cfg) return;
 
-  handleFrameLoad() {
-  try {
-    // Try to access the iframe's content
-    const frameDoc = this.elements.webFrame.contentDocument || this.elements.webFrame.contentWindow.document;
-    const currentUrl = this.elements.webFrame.contentWindow.location.href;
-    
-    // Check if we're on an error page or blocked page
-    if (this.isBlockedPage(currentUrl)) {
-      console.log('Blocked page detected:', currentUrl);
-      if (this.currentSiteKey) {
-        this.markSiteAsNonEmbeddable(this.currentSiteKey, 'Content blocked by service');
+    if (cfg.kind === 'api') {
+      if (this.apiKey) {
+        this.showView('chatContainer', 'api');
+      } else {
+        this.showView('apiKeySetup', 'api');
       }
+      this.saveSetting('lastSite', siteKey, 'local');
       return;
     }
-    
-    // Reset load attempts on successful load
-    if (this.currentSiteKey) {
-      this.loadAttempts[this.currentSiteKey] = 0;
+
+    if (cfg.embeddable === false) {
+      this.showNonEmbeddableMessage(siteKey);
+      this.saveSetting('lastSite', siteKey, 'local');
+      return;
     }
-    
-    // Check for auth redirects
-    if (this.isAuthRedirect(currentUrl)) {
-      console.log('Auth redirect detected:', currentUrl);
-      this.showAuthNotification();
+
+    this.showView('webContainer', siteKey);
+    this.loadAttempts[siteKey] = 0;
+    if (this.elements.webFrame.src !== cfg.url) {
+      this.elements.webFrame.src = cfg.url;
     }
-    
-  } catch (error) {
-    // Cross-origin restrictions prevent access - this is normal
-    console.log('Frame loaded (cross-origin protected)');
-    
-    // Set up a delayed check to see if the frame actually loaded content
-    setTimeout(() => {
-      if (this.currentSiteKey && this.elements.webFrame.src) {
-        this.checkFrameContent();
-      }
-    }, 2000);
+    this.saveSetting('lastSite', siteKey, 'local');
   }
-}
 
-  // Check if frame content actually loaded
-checkFrameContent() {
-  try {
-    // Try to detect if the frame is showing an error page
-    const frameWindow = this.elements.webFrame.contentWindow;
-    if (frameWindow) {
-      // Some basic checks that might indicate problems
-      frameWindow.postMessage('ping', '*');
-      
-      // Listen for a response (or lack thereof)
-      const messageHandler = (event) => {
-        if (event.source === frameWindow) {
-          // Frame is responsive
-          window.removeEventListener('message', messageHandler);
-        }
-      };
-      
-      window.addEventListener('message', messageHandler);
-      
-      // If no response after 3 seconds, assume there might be an issue
-      setTimeout(() => {
-        window.removeEventListener('message', messageHandler);
-        // Could implement additional checks here
-      }, 3000);
-    }
-  } catch (error) {
-    // Normal cross-origin behavior
+  showWelcomeScreen() {
+    this.showView('welcomeScreen', null);
+    this.saveSetting('lastSite', null, 'local');
   }
-}
 
-// Detect common blocked page patterns
-isBlockedPage(url) {
-  const blockedPatterns = [
-    'chrome-error://',
-    'chrome://network-error/',
-    'about:blank',
-    'data:text/html,chromewebdata',
-    'chrome-extension://invalid'
-  ];
-  
-  return blockedPatterns.some(pattern => url.includes(pattern));
-}
-
-  findSiteKeyByUrl(url) {
-  if (!url) return null;
-  
-  // Normalize URL to handle various formats
-  let normalizedUrl = url.toLowerCase();
-  
-  for (const [key, config] of Object.entries(this.siteConfigs)) {
-    if (config.url) {
-      try {
-        const configHostname = new URL(config.url).hostname.toLowerCase();
-        if (normalizedUrl.includes(configHostname)) {
-          return key;
-        }
-      } catch (e) {
-        // Fallback to string matching if URL parsing fails
-        if (normalizedUrl.includes(config.url.toLowerCase())) {
-          return key;
-        }
-      }
-    }
-    
-    // Check fallback URLs
-    if (config.fallbackUrls) {
-      for (const fallback of config.fallbackUrls) {
-        try {
-          const fallbackHostname = new URL(fallback).hostname.toLowerCase();
-          if (normalizedUrl.includes(fallbackHostname)) {
-            return key;
-          }
-        } catch (e) {
-          // Fallback to string matching
-          if (normalizedUrl.includes(fallback.toLowerCase())) {
-            return key;
-          }
-        }
-      }
-    }
-  }
-  
-  return null;
-}
-
-  markSiteAsNonEmbeddable(siteKey, reason) {
-    if (this.siteConfigs[siteKey]) {
-      this.siteConfigs[siteKey].embeddable = false;
-      this.siteConfigs[siteKey].reason = reason;
-      
-      // If this site is currently being viewed, show the non-embeddable message
-      if (this.currentSiteKey === siteKey) {
-        this.showNonEmbeddableMessage(siteKey);
-      }
+  reloadCurrentView() {
+    if (this.currentSiteKey && SITE_CONFIGS[this.currentSiteKey]?.kind === 'web') {
+      const src = this.elements.webFrame.src;
+      this.elements.webFrame.src = src;
     }
   }
 
-  // --- Enhanced Frame Loading with Error Handling ---
+  openSettings() { this.elements.settingsModal.classList.remove('hidden'); }
+  closeSettings() { this.elements.settingsModal.classList.add('hidden'); }
+
+  // ------------------------------------------------------------------
+  // Theme management
+  // ------------------------------------------------------------------
+
+  setTheme(value) {
+    this.themePreference = value;
+    this.saveSetting('themePreference', value, 'sync');
+    this.applyTheme();
+  }
+
+  applyTheme() {
+    const effective = this.resolveEffectiveTheme();
+    document.documentElement.setAttribute('data-theme', effective);
+
+    this.elements.themeSegmented.querySelectorAll('button[data-theme-value]').forEach((btn) => {
+      btn.classList.toggle('is-active', btn.dataset.themeValue === this.themePreference);
+    });
+  }
+
+  resolveEffectiveTheme() {
+    if (this.themePreference === 'dark') return 'dark';
+    if (this.themePreference === 'light') return 'light';
+    return this.systemThemeMql.matches ? 'dark' : 'light';
+  }
+
+  // ------------------------------------------------------------------
+  // Iframe lifecycle (mostly preserved from the previous implementation,
+  // de-duplicated and tidied up).
+  // ------------------------------------------------------------------
 
   handleFrameLoad() {
-    // Clear the load timeout since the frame loaded successfully
-    if (this.frameLoadTimeout) {
-      clearTimeout(this.frameLoadTimeout);
-      this.frameLoadTimeout = null;
-    }
-    
     try {
-      // Check if the iframe loaded successfully
-      const frameDoc = this.elements.webFrame.contentDocument || this.elements.webFrame.contentWindow.document;
-      
-      // Reset load attempts on successful load
-      if (this.currentSiteKey) {
-        this.loadAttempts[this.currentSiteKey] = 0;
-      }
-      
-      // Check for common redirect patterns that indicate auth/consent issues
       const currentUrl = this.elements.webFrame.contentWindow.location.href;
-      if (this.isAuthRedirect(currentUrl)) {
-        console.log('Auth redirect detected:', currentUrl);
-        this.showAuthNotification();
+
+      if (this.isBlockedPage(currentUrl)) {
+        if (this.currentSiteKey) {
+          this.markSiteAsNonEmbeddable(this.currentSiteKey, 'Content blocked by service');
+        }
+        return;
       }
-    } catch (error) {
-      // Cross-origin restrictions prevent us from accessing iframe content
-      // This is normal behavior, so we don't treat it as an error
-      console.log('Frame loaded (cross-origin)');
+
+      if (this.currentSiteKey) this.loadAttempts[this.currentSiteKey] = 0;
+
+      if (this.isAuthRedirect(currentUrl)) this.showAuthNotification();
+    } catch {
+      // Cross-origin restrictions prevent inspection; that's normal.
     }
   }
 
   handleFrameError(event) {
     console.error('Frame loading error:', event);
-    if (this.currentSiteKey) {
-      this.tryFallbackUrl(this.currentSiteKey);
-    }
+    if (this.currentSiteKey) this.tryFallbackUrl(this.currentSiteKey);
+  }
+
+  handleCSPViolation(event) {
+    const directive = event.violatedDirective || '';
+    if (!directive.includes('frame-ancestors') && !directive.includes('frame-src')) return;
+
+    const blockedUrl = event.blockedURI || event.documentURI || event.sourceFile;
+    const siteKey = this.findSiteKeyByUrl(blockedUrl);
+    if (siteKey) this.markSiteAsNonEmbeddable(siteKey, 'CSP frame-ancestors policy');
+  }
+
+  isBlockedPage(url) {
+    const blockedPatterns = [
+      'chrome-error://',
+      'chrome://network-error/',
+      'about:blank',
+      'data:text/html,chromewebdata',
+      'chrome-extension://invalid',
+    ];
+    return blockedPatterns.some((p) => url.includes(p));
   }
 
   isAuthRedirect(url) {
@@ -397,22 +530,43 @@ isBlockedPage(url) {
       'login.live.com',
       '/auth/',
       '/login/',
-      '/signin/'
+      '/signin/',
     ];
-    
-    return authPatterns.some(pattern => url.includes(pattern));
+    return authPatterns.some((p) => url.includes(p));
+  }
+
+  findSiteKeyByUrl(url) {
+    if (!url) return null;
+    const lower = url.toLowerCase();
+    for (const [key, cfg] of Object.entries(SITE_CONFIGS)) {
+      const candidates = [];
+      if (cfg.url) candidates.push(cfg.url);
+      if (cfg.fallbackUrls) candidates.push(...cfg.fallbackUrls);
+      for (const candidate of candidates) {
+        try {
+          if (lower.includes(new URL(candidate).hostname.toLowerCase())) return key;
+        } catch {
+          if (lower.includes(candidate.toLowerCase())) return key;
+        }
+      }
+    }
+    return null;
+  }
+
+  markSiteAsNonEmbeddable(siteKey, reason) {
+    const cfg = SITE_CONFIGS[siteKey];
+    if (!cfg) return;
+    cfg.embeddable = false;
+    cfg.reason = reason;
+    if (this.currentSiteKey === siteKey) this.showNonEmbeddableMessage(siteKey);
   }
 
   tryFallbackUrl(siteKey) {
-    const config = this.siteConfigs[siteKey];
-    if (!config || !config.fallbackUrls) return;
-
+    const cfg = SITE_CONFIGS[siteKey];
+    if (!cfg || !cfg.fallbackUrls) return;
     const attempts = this.loadAttempts[siteKey] || 0;
-    
-    if (attempts < config.fallbackUrls.length) {
-      const fallbackUrl = config.fallbackUrls[attempts];
-      console.log(`Trying fallback URL for ${siteKey}: ${fallbackUrl}`);
-      
+    if (attempts < cfg.fallbackUrls.length) {
+      const fallbackUrl = cfg.fallbackUrls[attempts];
       this.loadAttempts[siteKey] = attempts + 1;
       this.elements.webFrame.src = fallbackUrl;
     } else {
@@ -421,396 +575,143 @@ isBlockedPage(url) {
   }
 
   showAuthNotification() {
-    // Create a temporary notification
+    const existing = document.getElementById('authNotification');
+    if (existing) return;
     const notification = document.createElement('div');
+    notification.id = 'authNotification';
     notification.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: #ff9800;
-      color: white;
-      padding: 12px;
-      border-radius: 8px;
-      z-index: 10000;
-      font-size: 14px;
-      max-width: 300px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      position: fixed; top: 50px; right: 12px;
+      background: var(--accent-warning); color: white;
+      padding: 10px 12px; border-radius: 8px;
+      z-index: 10000; font-size: 12.5px; max-width: 280px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     `;
     notification.innerHTML = `
-      <div style="font-weight: bold; margin-bottom: 8px;">⚠️ Authentication Required</div>
-      <div>Please complete the authentication process in the iframe, then refresh if needed.</div>
+      <div style="font-weight: 600; margin-bottom: 4px;">⚠️ Authentication needed</div>
+      <div>Complete sign-in in the frame, then refresh.</div>
     `;
-    
     document.body.appendChild(notification);
-    setTimeout(() => notification.remove(), 10000);
+    setTimeout(() => notification.remove(), 8000);
   }
 
   showNonEmbeddableMessage(siteKey) {
-  const config = this.siteConfigs[siteKey];
-  const reason = config.reason || 'security restrictions';
-  
-  this.showView('webContainer', siteKey);
-  
-  // Create a proper document structure instead of using onclick attributes
-  const messageHtml = `
-    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; text-align: center; background: #f8f9fa;">
-      <div style="font-size: 48px; margin-bottom: 20px;">${config.name.split(' ')[0]}</div>
-      <h3 style="margin-bottom: 16px; color: #1976d2;">${config.name}</h3>
-      <p style="color: #666; margin-bottom: 8px; max-width: 400px;">
-        This service cannot be embedded due to ${reason}.
-      </p>
-      <p style="color: #666; margin-bottom: 24px; max-width: 400px;">
-        Click the button below to open it in a new browser tab.
-      </p>
-      <button id="openInNewTab" style="
-        background: #1976d2; 
-        color: white; 
-        border: none; 
-        padding: 16px 32px; 
-        border-radius: 8px; 
-        cursor: pointer;
-        font-size: 16px;
-        font-weight: 500;
-        box-shadow: 0 2px 8px rgba(25, 118, 210, 0.3);
-        transition: all 0.2s ease;
-      ">
-        Open ${config.name} in New Tab
-      </button>
-      <div style="margin-top: 20px; padding: 16px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107; max-width: 400px;">
-        <div style="font-weight: 500; color: #856404; margin-bottom: 4px;">💡 Tip</div>
-        <div style="color: #856404; font-size: 14px;">
-          Some AI services have strict security policies that prevent embedding. 
-          This is normal and protects your data.
-        </div>
+    const cfg = SITE_CONFIGS[siteKey];
+    const reason = cfg.reason || 'security restrictions';
+    this.showView('webContainer', siteKey);
+
+    const messageHtml = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:20px;text-align:center;background:#f8f9fa;color:#333;font-family:-apple-system,sans-serif;">
+        <div style="font-size:42px;margin-bottom:14px;">${cfg.icon}</div>
+        <h3 style="margin-bottom:10px;color:#1976d2;">${cfg.name}</h3>
+        <p style="color:#666;margin-bottom:6px;max-width:340px;">This service can't be embedded due to ${reason}.</p>
+        <p style="color:#666;margin-bottom:18px;max-width:340px;">Open it in a new browser tab instead.</p>
+        <button id="openInNewTab" style="background:#1976d2;color:white;border:none;padding:12px 22px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;">Open ${cfg.name} in New Tab</button>
       </div>
-    </div>
-  `;
-  
-  this.elements.webFrame.srcdoc = messageHtml;
-  
-  // Add event listener after the iframe loads
-  this.elements.webFrame.onload = () => {
-    try {
-      const iframeDoc = this.elements.webFrame.contentDocument || this.elements.webFrame.contentWindow.document;
-      const button = iframeDoc.getElementById('openInNewTab');
-      if (button) {
-        button.addEventListener('click', () => {
-          chrome.tabs.create({ url: config.url });
-        });
-        
-        // Add hover effects
-        button.addEventListener('mouseenter', () => {
-          button.style.background = '#1565c0';
-        });
-        button.addEventListener('mouseleave', () => {
-          button.style.background = '#1976d2';
-        });
+    `;
+    this.elements.webFrame.srcdoc = messageHtml;
+    this.elements.webFrame.onload = () => {
+      try {
+        const doc = this.elements.webFrame.contentDocument;
+        const btn = doc && doc.getElementById('openInNewTab');
+        if (btn) btn.addEventListener('click', () => chrome.tabs.create({ url: cfg.url }));
+      } catch {
+        // ignore cross-origin issues
       }
-    } catch (error) {
-      console.log('Could not access iframe content (this is normal for cross-origin)');
-    }
-  };
-}
+    };
+  }
 
   showLoadErrorMessage(siteKey) {
-  const config = this.siteConfigs[siteKey];
-  const errorHtml = `
-    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; text-align: center; background: #f5f5f5;">
-      <div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>
-      <h3 style="margin-bottom: 16px; color: #d32f2f;">Unable to load ${config.name}</h3>
-      <p style="color: #666; margin-bottom: 20px; max-width: 400px;">
-        The service might be temporarily unavailable or require authentication. 
-        Try opening it in a new browser tab first, then return here.
-      </p>
-      <div style="display: flex; gap: 12px;">
-        <button id="retryBtn" style="
-          background: #1976d2; 
-          color: white; 
-          border: none; 
-          padding: 12px 24px; 
-          border-radius: 6px; 
-          cursor: pointer;
-          font-size: 14px;
-        ">Retry</button>
-        <button id="openNewTabBtn" style="
-          background: #666; 
-          color: white; 
-          border: none; 
-          padding: 12px 24px; 
-          border-radius: 6px; 
-          cursor: pointer;
-          font-size: 14px;
-        ">Open in New Tab</button>
-      </div>
-    </div>
-  `;
-  
-  this.elements.webFrame.srcdoc = errorHtml;
-  
-  // Add event listeners after the iframe loads
-  this.elements.webFrame.onload = () => {
-    try {
-      const iframeDoc = this.elements.webFrame.contentDocument || this.elements.webFrame.contentWindow.document;
-      
-      const retryBtn = iframeDoc.getElementById('retryBtn');
-      const openNewTabBtn = iframeDoc.getElementById('openNewTabBtn');
-      
-      if (retryBtn) {
-        retryBtn.addEventListener('click', () => {
-          location.reload();
-        });
-      }
-      
-      if (openNewTabBtn) {
-        openNewTabBtn.addEventListener('click', () => {
-          chrome.tabs.create({ url: config.url });
-        });
-      }
-    } catch (error) {
-      console.log('Could not access iframe content (this is normal for cross-origin)');
-    }
-  };
-}
-
-
-  // --- View & UI Management ---
-
-  showView(viewName, siteKey) {
-    // Hide all main views
-    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
-    
-    // Show the target view
-    if (this.elements[viewName]) {
-        this.elements[viewName].classList.remove('hidden');
-    }
-
-    const config = this.siteConfigs[siteKey];
-    if (config) {
-      // If we are in a specific view (not welcome screen), show the handle
-      this.elements.showBarHandle.classList.remove('hidden');
-      this.elements.siteName.textContent = config.name;
-      this.currentSiteKey = siteKey;
-    } else {
-      // Otherwise, we are on the welcome screen, so hide the handle
-      this.elements.showBarHandle.classList.add('hidden');
-      this.currentSiteKey = null;
-    }
-
-    // Ensure the control bar and handle start in the closed state
-    this.elements.mainControlBar.classList.remove('is-visible');
-    this.elements.showBarHandle.classList.remove('is-open');
-  }
-
-  handleOptionClick(siteKey) {
-    if (siteKey === 'api') {
-      if (this.apiKey) {
-        this.showView('chatContainer', 'api');
-      } else {
-        this.showView('apiKeySetup', 'api');
-      }
-    } else if (this.siteConfigs[siteKey]) {
-      const config = this.siteConfigs[siteKey];
-      
-      // Check if the service can be embedded
-      if (config.embeddable === false) {
-        this.showNonEmbeddableMessage(siteKey);
-        return;
-      }
-      
-      this.showView('webContainer', siteKey);
-      
-      // Reset load attempts for this site
-      this.loadAttempts[siteKey] = 0;
-      
-      if (this.elements.webFrame.src !== config.url) {
-        this.elements.webFrame.src = config.url;
-      }
-    }
-    this.saveSetting('lastSite', siteKey, 'local');
-  }
-  
-  expandApiCard(container, siteKey) {
-  // Collapse any currently expanded API cards
-  this.collapseAllApiCards();
-  
-  // Expand the clicked API card
-  container.classList.add('api-expanded');
-  this.elements.optionCards.classList.add('api-expanded');
-  
-  // Replace the API card content with the form
-  const apiCard = container.querySelector('.api-card');
-  const serviceName = this.siteConfigs[siteKey]?.name || siteKey;
-  
-  apiCard.innerHTML = `
-    <div class="api-form">
-      <div style="text-align: center; margin-bottom: 8px;">
-        <span style="font-size: 16px;">🔑</span>
-        <div style="font-size: 12px; font-weight: 600; color: #ff9800;">
-          ${serviceName} API
+    const cfg = SITE_CONFIGS[siteKey];
+    const errorHtml = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:20px;text-align:center;background:#f5f5f5;color:#333;font-family:-apple-system,sans-serif;">
+        <div style="font-size:42px;margin-bottom:14px;">⚠️</div>
+        <h3 style="margin-bottom:10px;color:#d32f2f;">Unable to load ${cfg.name}</h3>
+        <p style="color:#666;margin-bottom:18px;max-width:340px;">
+          The service might be unavailable or need login. Try opening it in a new tab first, then come back.
+        </p>
+        <div style="display:flex;gap:10px;">
+          <button id="retryBtn" style="background:#1976d2;color:white;border:none;padding:10px 18px;border-radius:6px;cursor:pointer;font-size:13.5px;">Retry</button>
+          <button id="openNewTabBtn" style="background:#666;color:white;border:none;padding:10px 18px;border-radius:6px;cursor:pointer;font-size:13.5px;">Open in New Tab</button>
         </div>
       </div>
-      <input type="password" id="apiInput_${siteKey}" placeholder="Enter API key..." />
-      <div class="api-buttons">
-        <button class="api-save-btn" data-site="${siteKey}">Save</button>
-        <button class="api-clear-btn" data-site="${siteKey}">Clear</button>
-        <button class="api-back-btn" data-site="${siteKey}">Back</button>
-      </div>
-    </div>
-  `;
-  
-  // Add event listeners to the new buttons
-  this.setupApiFormListeners(apiCard, siteKey);
-  
-  // Focus on the input field
-  setTimeout(() => {
-    const input = apiCard.querySelector(`#apiInput_${siteKey}`);
-    if (input) input.focus();
-  }, 100);
-}
-
-setupApiFormListeners(apiCard, siteKey) {
-  const saveBtn = apiCard.querySelector('.api-save-btn');
-  const clearBtn = apiCard.querySelector('.api-clear-btn');
-  const backBtn = apiCard.querySelector('.api-back-btn');
-  const input = apiCard.querySelector(`#apiInput_${siteKey}`);
-  
-  saveBtn.addEventListener('click', () => {
-    const apiKey = input.value.trim();
-    if (apiKey) {
-      this.saveServiceApiKey(siteKey, apiKey);
-      this.showApiSavedFeedback(apiCard);
-    } else {
-      alert('Please enter an API key');
-    }
-  });
-  
-  clearBtn.addEventListener('click', () => {
-    input.value = '';
-    input.focus();
-  });
-  
-  backBtn.addEventListener('click', () => {
-    this.collapseApiCard(apiCard.closest('.option-card-container'));
-  });
-  
-  // Enter key to save
-  input.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      saveBtn.click();
-    }
-  });
-}
-
-collapseApiCard(container) {
-  container.classList.remove('api-expanded');
-  this.elements.optionCards.classList.remove('api-expanded');
-  
-  // Restore original API card content
-  const apiCard = container.querySelector('.api-card');
-  const siteKey = apiCard.dataset.site;
-  
-  apiCard.innerHTML = `
-    <span class="api-icon">🔑</span>
-    <span class="api-label">API</span>
-  `;
-}
-
-collapseAllApiCards() {
-  document.querySelectorAll('.option-card-container.api-expanded').forEach(container => {
-    this.collapseApiCard(container);
-  });
-}
-
-async saveServiceApiKey(siteKey, apiKey) {
-  try {
-    await this.saveSetting(`${siteKey}_api_key`, apiKey, 'local');
-    console.log(`API key saved for ${siteKey}`);
-  } catch (error) {
-    console.error('Error saving API key:', error);
-    alert('Error saving API key. Please try again.');
+    `;
+    this.elements.webFrame.srcdoc = errorHtml;
+    this.elements.webFrame.onload = () => {
+      try {
+        const doc = this.elements.webFrame.contentDocument;
+        if (!doc) return;
+        const retryBtn = doc.getElementById('retryBtn');
+        const openNewTabBtn = doc.getElementById('openNewTabBtn');
+        if (retryBtn) retryBtn.addEventListener('click', () => this.handleOptionClick(siteKey));
+        if (openNewTabBtn) openNewTabBtn.addEventListener('click', () => chrome.tabs.create({ url: cfg.url }));
+      } catch {
+        // ignore cross-origin issues
+      }
+    };
   }
-}
 
-showApiSavedFeedback(apiCard) {
-  const originalContent = apiCard.innerHTML;
-  
-  apiCard.innerHTML = `
-    <div style="text-align: center; color: #4caf50;">
-      <div style="font-size: 20px; margin-bottom: 8px;">✅</div>
-      <div style="font-size: 12px; font-weight: 600;">API Key Saved!</div>
-    </div>
-  `;
-  
-  setTimeout(() => {
-    this.collapseApiCard(apiCard.closest('.option-card-container'));
-  }, 1500);
-}
+  // ------------------------------------------------------------------
+  // State persistence
+  // ------------------------------------------------------------------
 
-  showWelcomeScreen() {
-  this.showView('welcomeScreen', null);
-  this.collapseAllApiCards(); // Reset API card states
-  this.saveSetting('lastSite', null, 'local');
-}
-
-  openSettings() { this.elements.settingsModal.classList.remove('hidden'); }
-  closeSettings() { this.elements.settingsModal.classList.add('hidden'); }
-
-  // --- State & Settings Logic ---
-  
-  async loadLastState() {
-    const { lastSite } = await this.loadSetting('lastSite', 'local');
-    if (lastSite) {
-        this.handleOptionClick(lastSite);
-    } else {
-        this.showWelcomeScreen();
-    }
-  }
-  
   async loadSettings() {
+    const { themePreference } = await this.loadSetting('themePreference', 'sync', 'system');
+    this.themePreference = themePreference || 'system';
+    this.applyTheme();
+
     const { geminiBlockEnabled } = await this.loadSetting('geminiBlockEnabled', 'sync', true);
     this.elements.toggleBlocker.checked = geminiBlockEnabled;
-    
+
     const { geminiApiKey } = await this.loadSetting('geminiApiKey', 'local');
-    if (geminiApiKey) {
-      this.apiKey = geminiApiKey;
+    if (geminiApiKey) this.apiKey = geminiApiKey;
+  }
+
+  async loadLastState() {
+    const { lastSite } = await this.loadSetting('lastSite', 'local');
+    if (lastSite && SITE_CONFIGS[lastSite]) {
+      this.handleOptionClick(lastSite);
+    } else {
+      this.showWelcomeScreen();
     }
   }
 
   async loadSetting(key, type = 'local', defaultValue = null) {
-      try {
-          const storageArea = type === 'sync' ? chrome.storage.sync : chrome.storage.local;
-          const result = await storageArea.get({ [key]: defaultValue });
-          return result;
-      } catch (error) {
-          console.error(`Error loading setting ${key}:`, error);
-          return { [key]: defaultValue };
-      }
+    try {
+      const area = type === 'sync' ? chrome.storage.sync : chrome.storage.local;
+      return await area.get({ [key]: defaultValue });
+    } catch (err) {
+      console.error(`Error loading setting ${key}:`, err);
+      return { [key]: defaultValue };
+    }
   }
 
   async saveSetting(key, value, type = 'local') {
     try {
-      const storageArea = type === 'sync' ? chrome.storage.sync : chrome.storage.local;
-      await storageArea.set({ [key]: value });
-    } catch (error) {
-      console.error(`Error saving setting ${key}:`, error);
+      const area = type === 'sync' ? chrome.storage.sync : chrome.storage.local;
+      await area.set({ [key]: value });
+    } catch (err) {
+      console.error(`Error saving setting ${key}:`, err);
     }
   }
 
-  // --- API & Chat Logic ---
+  // ------------------------------------------------------------------
+  // API key handling (the chat completion call itself is not yet wired
+  // up - see open task on Quick Chat).
+  // ------------------------------------------------------------------
+
   async saveApiKey() {
-    const newApiKey = this.elements.apiKeyInput.value.trim();
-    if (!newApiKey) {
+    const newKey = this.elements.apiKeyInput.value.trim();
+    if (!newKey) {
       alert('Please enter an API key.');
       return;
     }
-    this.apiKey = newApiKey;
-    await this.saveSetting('geminiApiKey', newApiKey, 'local');
+    this.apiKey = newKey;
+    await this.saveSetting('geminiApiKey', newKey, 'local');
     this.elements.apiKeyInput.value = '';
     this.showView('chatContainer', 'api');
   }
 }
 
-// Initialize the app after the DOM is fully loaded
 document.addEventListener('DOMContentLoaded', () => {
   new AiChatHub();
 });

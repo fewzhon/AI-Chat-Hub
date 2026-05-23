@@ -5,26 +5,11 @@
     "action": {
       "type": "modifyHeaders",
       "responseHeaders": [
-        {
-          "header": "x-frame-options",
-          "operation": "remove"
-        },
-        {
-          "header": "X-Frame-Options",
-          "operation": "remove"
-        },
-        {
-          "header": "content-security-policy",
-          "operation": "remove"
-        },
-        {
-          "header": "Content-Security-Policy",
-          "operation": "remove"
-        },
-        {
-          "header": "content-security-policy-report-only",
-          "operation": "remove"
-        }
+        { "header": "x-frame-options", "operation": "remove" },
+        { "header": "X-Frame-Options", "operation": "remove" },
+        { "header": "content-security-policy", "operation": "remove" },
+        { "header": "Content-Security-Policy", "operation": "remove" },
+        { "header": "content-security-policy-report-only", "operation": "remove" }
       ]
     },
     "condition": {
@@ -47,10 +32,21 @@
         "anthropic.com",
         "grok.com",
         "x.com",
-		"x.ai",
-		"meta.ai",
-		"meta.com",
-		"facebook.com"
+        "x.ai",
+        "meta.ai",
+        "meta.com",
+        "facebook.com",
+        "deepseek.com",
+        "mistral.ai",
+        "poe.com",
+        "you.com",
+        "qwen.ai",
+        "tongyi.aliyun.com",
+        "aliyun.com",
+        "kimi.com",
+        "moonshot.cn",
+        "z.ai",
+        "genspark.ai"
       ],
       "resourceTypes": [
         "main_frame",

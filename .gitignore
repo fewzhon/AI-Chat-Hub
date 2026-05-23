@@ -1,1 +1,7 @@
 .vscode/settings.json
+
+# Chrome's auto-generated DNR ruleset cache (recreated each time the extension is loaded)
+_metadata/
+
+# macOS metadata
+.DS_Store

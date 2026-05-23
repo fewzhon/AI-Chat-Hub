@@ -1,17 +1,19 @@
 # AI Chat Hub
 
-A versatile Chrome extension to access multiple AI assistants (Gemini, ChatGPT, Claude, etc.) and chat directly with the Gemini API, all from the comfort of your side panel.
+A versatile Chrome extension to access multiple AI assistants from a side panel via a persistent, scrollable tab bar - and chat directly with the Gemini API.
 
 # AI Chat Hub Screenshot
 <img width="1905" height="1152" alt="Image" src="https://github.com/user-attachments/assets/2e640d15-e5f7-452d-acbb-5d0cf9bf87ad" />
 
 ## ✨ Features
 
-- **Multi-AI Access**: Quickly switch between popular AI services like Gemini, ChatGPT, Perplexity, Claude, and Copilot, all embedded directly in the side panel.
-- **Direct API Chat**: A built-in chat client to interact with the Gemini API using your own key. Your chat history is saved locally and securely in your browser.
-- **Sleek UI**: A modern interface with a hideable control bar, triggered by a menu handle (☰), to maximize screen space while you work.
-- **Gemini Enter Key Blocker**: An optional feature that runs on the Gemini website to prevent accidental message submissions. When enabled, `Enter` creates a new line, and `Shift+Enter` submits.
-- **Configurable Settings**: Easily toggle the Enter key blocker and manage your Gemini API key from the settings menu.
+- **Persistent tab bar**: Always-visible scrollable tab strip at the top of the side panel. One click switches between any AI - no more navigating back to the welcome screen first.
+- **16 AI services out of the box**: Gemini, ChatGPT, Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek, Mistral, Poe, You.com, Qwen, Kimi, Z.ai, Genspark - plus a built-in Quick Chat using the Gemini API.
+- **Light, Dark, and System themes**: Pick your preferred theme from settings; "System" automatically follows your OS preference and live-updates on changes.
+- **Direct API chat**: Talk to the Gemini API with your own key. Your API key is stored locally in your browser via `chrome.storage.local`.
+- **Resilient iframe loading**: Each service has fallback URLs - if the main URL fails to embed, the extension automatically tries alternatives. Sites that can't be embedded show a clean "Open in new tab" fallback page.
+- **Gemini Enter key blocker**: Optional content script that intercepts Enter on the Gemini website so it inserts a newline; Shift+Enter sends. Useful for avoiding accidental submissions.
+- **Last-state restore**: Re-opens the panel on whichever service you were last using.
 
 ## 📁 File Structure
 
@@ -43,16 +45,27 @@ AI-Chat-Hub/
 ## 🎯 How to Use
 
 - **Opening the Hub**: Click the extension icon in your Chrome toolbar to open the AI Chat Hub in the side panel.
-- **Selecting a Service**: From the welcome screen, click on any of the available AI services to load it in the side panel.
-- **Navigating**: When viewing a service, a menu handle (☰) will appear at the top right. Click it to reveal the control bar, which contains a "Back" button to return to the welcome screen and a "Settings" button.
-- **API Chat**:
-    1.  Select "✨ Quick Chat (API)" from the welcome screen.
-    2.  If it's your first time, you'll be prompted to enter a Gemini API key. You can get one from [Google AI Studio](https://aistudio.google.com/app/apikey).
-    3.  Your key is saved locally, and you'll be taken directly to the chat interface on future visits.
+- **Switching AIs**: Use the tab bar at the top to instantly switch between services. The 🏠 button on the left returns to the home/welcome screen; ↻ reloads the current view; ⚙️ opens settings.
+- **Welcome / Home view**: Lists every service as a card. Each web service also has a ↗ button that opens the service in a new browser tab (useful when a service is being uncooperative inside the iframe).
+- **API Chat (Quick Chat)**:
+    1.  Click the ✨ Quick Chat tab.
+    2.  On first use you'll be asked for a Gemini API key. Get one from [Google AI Studio](https://aistudio.google.com/app/apikey).
+    3.  Your key is saved locally; subsequent visits go straight to the chat view.
 - **Settings**:
-    1.  Click the menu handle (☰) and then the "Settings" button.
-    2.  In the modal, you can toggle the "Gemini Enter Key Blocker" on or off.
-    3.  You can also choose to change your saved Gemini API key.
+    - **Theme** - Light / System / Dark.
+    - **Gemini Enter Key Blocker** - toggles the content script on gemini.google.com.
+    - **Change API Key** - replace your stored Gemini API key.
+
+## ➕ Adding Your Own AI Service
+
+To add a new service, edit `sidepanel.js`:
+
+1. Add an entry to `SITE_CONFIGS` with `name`, `icon`, `description`, `url`, `fallbackUrls`, and `kind: 'web'`.
+2. Add its key to `TAB_ORDER` where you want it to appear in the tab bar.
+3. Add the host(s) to `host_permissions` in `manifest.json`.
+4. Add the bare domain to `requestDomains` in `rules.json` so the extension strips iframe-blocking headers for it.
+
+That's it - the tab bar and welcome screen render dynamically from `SITE_CONFIGS`.
 
 ## 🔧 Technical Details
 
