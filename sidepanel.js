@@ -165,6 +165,17 @@ const SITE_CONFIGS = {
   },
 };
 
+// ----------------------------------------------------------------------
+// Gemini API (Quick Chat) configuration
+// ----------------------------------------------------------------------
+// The model is intentionally hard-coded here so the surface area stays
+// small for now; a user-facing model picker is on the roadmap.
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+// Cap saved history to keep `chrome.storage.local` lean. Older messages
+// past this count are dropped from BOTH UI and storage.
+const MAX_CHAT_HISTORY = 100;
+
 // Display order in tabs and on the welcome screen. Edit this to reorder
 // without changing the config objects themselves.
 const TAB_ORDER = [
@@ -224,6 +235,9 @@ class AiChatHub {
       messageInput: $('messageInput'),
       sendBtn: $('sendBtn'),
       messages: $('messages'),
+      messagesEmpty: $('messagesEmpty'),
+      chatModelLabel: $('chatModelLabel'),
+      clearChatBtn: $('clearChatBtn'),
 
       // Settings modal
       settingsModal: $('settingsModal'),
@@ -231,10 +245,12 @@ class AiChatHub {
       themeSegmented: $('themeSegmented'),
       toggleBlocker: $('toggleBlocker'),
       changeApiKeyBtn: $('changeApiKeyBtn'),
+      clearChatHistoryBtn: $('clearChatHistoryBtn'),
     };
 
     this.apiKey = null;
     this.chatHistory = [];
+    this.isChatPending = false;
     this.loadAttempts = {};
     this.currentSiteKey = null;
     this.themePreference = 'system';
@@ -247,7 +263,10 @@ class AiChatHub {
     this.renderWelcomeCards();
     this.renderTabBar();
     this.setupEventListeners();
+    this.elements.chatModelLabel.textContent = `Gemini · ${GEMINI_MODEL}`;
     await this.loadSettings();
+    await this.loadChatHistory();
+    this.updateSendButtonState();
     await this.loadLastState();
   }
 
@@ -368,6 +387,24 @@ class AiChatHub {
 
     // CSP violations (best-effort detection of frame-ancestors blocks)
     document.addEventListener('securitypolicyviolation', (e) => this.handleCSPViolation(e));
+
+    // Quick Chat input
+    this.elements.sendBtn.addEventListener('click', () => this.sendMessage());
+
+    this.elements.messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        this.sendMessage();
+      }
+    });
+
+    this.elements.messageInput.addEventListener('input', () => {
+      this.autoResizeTextarea();
+      this.updateSendButtonState();
+    });
+
+    this.elements.clearChatBtn.addEventListener('click', () => this.confirmClearChatHistory());
+    this.elements.clearChatHistoryBtn.addEventListener('click', () => this.confirmClearChatHistory());
   }
 
   // ------------------------------------------------------------------
@@ -695,8 +732,7 @@ class AiChatHub {
   }
 
   // ------------------------------------------------------------------
-  // API key handling (the chat completion call itself is not yet wired
-  // up - see open task on Quick Chat).
+  // API key handling
   // ------------------------------------------------------------------
 
   async saveApiKey() {
@@ -709,6 +745,210 @@ class AiChatHub {
     await this.saveSetting('geminiApiKey', newKey, 'local');
     this.elements.apiKeyInput.value = '';
     this.showView('chatContainer', 'api');
+  }
+
+  // ------------------------------------------------------------------
+  // Quick Chat (Gemini API)
+  // ------------------------------------------------------------------
+
+  async sendMessage() {
+    if (this.isChatPending) return;
+
+    const text = this.elements.messageInput.value.trim();
+    if (!text) return;
+
+    if (!this.apiKey) {
+      this.showView('apiKeySetup', 'api');
+      return;
+    }
+
+    this.elements.messageInput.value = '';
+    this.autoResizeTextarea();
+    this.updateSendButtonState();
+
+    this.appendChatTurn({ role: 'user', text });
+
+    this.isChatPending = true;
+    this.updateSendButtonState();
+    const typingEl = this.showTypingIndicator();
+
+    try {
+      const reply = await this.callGeminiApi();
+      this.removeTypingIndicator(typingEl);
+      this.appendChatTurn({ role: 'model', text: reply });
+    } catch (err) {
+      this.removeTypingIndicator(typingEl);
+      const message = this.formatApiError(err);
+      this.renderMessage('error', message);
+      console.error('Gemini API error:', err);
+    } finally {
+      this.isChatPending = false;
+      this.updateSendButtonState();
+      this.elements.messageInput.focus();
+    }
+  }
+
+  async callGeminiApi() {
+    const url = `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+    const body = {
+      contents: this.chatHistory.map((turn) => ({
+        role: turn.role,
+        parts: [{ text: turn.text }],
+      })),
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      const err = new Error(`HTTP ${response.status}: ${response.statusText}`);
+      err.status = response.status;
+      err.body = errorText;
+      throw err;
+    }
+
+    const data = await response.json();
+    const candidate = data.candidates && data.candidates[0];
+    const parts = candidate && candidate.content && candidate.content.parts;
+    const text = Array.isArray(parts) ? parts.map((p) => p.text || '').join('') : '';
+
+    if (!text) {
+      const blockReason = data.promptFeedback && data.promptFeedback.blockReason;
+      const finishReason = candidate && candidate.finishReason;
+      const detail = blockReason || finishReason || 'no content returned';
+      throw new Error(`Empty response from Gemini (${detail})`);
+    }
+
+    return text;
+  }
+
+  formatApiError(err) {
+    if (err && err.status === 400) {
+      return 'Gemini rejected the request. Your API key might be invalid, or the request was malformed.';
+    }
+    if (err && err.status === 403) {
+      return "Gemini denied the request (403). Check that the Generative Language API is enabled for your API key.";
+    }
+    if (err && err.status === 429) {
+      return 'Rate limit reached. Wait a moment and try again.';
+    }
+    if (err && err.status >= 500) {
+      return 'Gemini service error. Try again in a few seconds.';
+    }
+    if (err && err.message && err.message.startsWith('Empty response')) {
+      return `${err.message}. This usually means the prompt was filtered for safety.`;
+    }
+    return `Request failed: ${err && err.message ? err.message : 'unknown error'}.`;
+  }
+
+  appendChatTurn(turn) {
+    this.chatHistory.push(turn);
+    if (this.chatHistory.length > MAX_CHAT_HISTORY) {
+      this.chatHistory = this.chatHistory.slice(-MAX_CHAT_HISTORY);
+    }
+    this.renderMessage(turn.role, turn.text);
+    this.saveChatHistory();
+  }
+
+  renderMessage(role, text) {
+    if (this.elements.messagesEmpty) this.elements.messagesEmpty.classList.add('hidden');
+
+    const wrapper = document.createElement('div');
+    wrapper.className = `message ${role === 'user' ? 'user' : role === 'error' ? 'error' : 'assistant'}`;
+
+    const iconChar = role === 'user' ? '👤' : role === 'error' ? '!' : '✨';
+    const icon = document.createElement('div');
+    icon.className = 'icon';
+    icon.textContent = iconChar;
+
+    const content = document.createElement('div');
+    content.className = 'content';
+    content.textContent = text;
+
+    wrapper.appendChild(icon);
+    wrapper.appendChild(content);
+    this.elements.messages.appendChild(wrapper);
+
+    this.scrollMessagesToBottom();
+    return wrapper;
+  }
+
+  showTypingIndicator() {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'message assistant typing';
+
+    const icon = document.createElement('div');
+    icon.className = 'icon';
+    icon.textContent = '✨';
+
+    const content = document.createElement('div');
+    content.className = 'content';
+    content.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+
+    wrapper.appendChild(icon);
+    wrapper.appendChild(content);
+    this.elements.messages.appendChild(wrapper);
+    this.scrollMessagesToBottom();
+    return wrapper;
+  }
+
+  removeTypingIndicator(el) {
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+
+  scrollMessagesToBottom() {
+    const m = this.elements.messages;
+    m.scrollTop = m.scrollHeight;
+  }
+
+  autoResizeTextarea() {
+    const ta = this.elements.messageInput;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
+  }
+
+  updateSendButtonState() {
+    const hasText = this.elements.messageInput.value.trim().length > 0;
+    this.elements.sendBtn.disabled = !hasText || this.isChatPending;
+  }
+
+  confirmClearChatHistory() {
+    if (this.chatHistory.length === 0) return;
+    if (!window.confirm('Clear the entire Quick Chat conversation? This cannot be undone.')) return;
+    this.clearChatHistory();
+    this.closeSettings();
+  }
+
+  async clearChatHistory() {
+    this.chatHistory = [];
+    this.elements.messages.innerHTML = '';
+    if (this.elements.messagesEmpty) {
+      this.elements.messages.appendChild(this.elements.messagesEmpty);
+      this.elements.messagesEmpty.classList.remove('hidden');
+    }
+    await this.saveSetting('chatHistory', [], 'local');
+  }
+
+  async loadChatHistory() {
+    const { chatHistory } = await this.loadSetting('chatHistory', 'local', []);
+    if (!Array.isArray(chatHistory) || chatHistory.length === 0) return;
+
+    this.chatHistory = chatHistory.filter(
+      (turn) => turn && typeof turn.text === 'string' && (turn.role === 'user' || turn.role === 'model')
+    );
+
+    if (this.chatHistory.length === 0) return;
+
+    if (this.elements.messagesEmpty) this.elements.messagesEmpty.classList.add('hidden');
+    for (const turn of this.chatHistory) this.renderMessage(turn.role, turn.text);
+  }
+
+  async saveChatHistory() {
+    await this.saveSetting('chatHistory', this.chatHistory, 'local');
   }
 }
 
