@@ -25,6 +25,14 @@ const SITE_CONFIGS = {
     kind: 'api',
   },
 
+  // Multi-AI Compare / broadcast mode (kind 'compare', no iframe URL).
+  compare: {
+    name: 'Compare',
+    icon: '🔄',
+    description: 'Send one prompt to multiple AIs at once',
+    kind: 'compare',
+  },
+
   // ------ Existing iframe-based services -------------------------------
   gemini: {
     name: 'Gemini',
@@ -180,6 +188,7 @@ const MAX_CHAT_HISTORY = 100;
 // without changing the config objects themselves.
 const TAB_ORDER = [
   'api',
+  'compare',
   'gemini',
   'chatgpt',
   'claude',
@@ -222,6 +231,10 @@ class AiChatHub {
       // Welcome card containers
       apiCards: $('apiCards'),
       webCards: $('webCards'),
+      compareCards: $('compareCards'),
+
+      // Compare view container
+      compareContainer: $('compareContainer'),
 
       // Web view
       webFrame: $('webFrame'),
@@ -255,6 +268,12 @@ class AiChatHub {
     this.currentSiteKey = null;
     this.themePreference = 'system';
     this.systemThemeMql = window.matchMedia('(prefers-color-scheme: dark)');
+
+    // CompareView is created lazily the first time the Compare tab is
+    // opened, so the 5 AI iframes don't start loading until the user
+    // actually wants them. Once initialized, we keep it around so the
+    // conversations don't reset on every tab switch.
+    this.compareView = null;
 
     this.init();
   }
@@ -298,8 +317,10 @@ class AiChatHub {
   renderWelcomeCards() {
     const apiContainer = this.elements.apiCards;
     const webContainer = this.elements.webCards;
+    const compareContainer = this.elements.compareCards;
     apiContainer.innerHTML = '';
     webContainer.innerHTML = '';
+    compareContainer.innerHTML = '';
 
     for (const key of TAB_ORDER) {
       const cfg = SITE_CONFIGS[key];
@@ -334,6 +355,7 @@ class AiChatHub {
       }
 
       if (cfg.kind === 'api') apiContainer.appendChild(row);
+      else if (cfg.kind === 'compare') compareContainer.appendChild(row);
       else webContainer.appendChild(row);
     }
   }
@@ -455,6 +477,13 @@ class AiChatHub {
       return;
     }
 
+    if (cfg.kind === 'compare') {
+      this.ensureCompareView();
+      this.showView('compareContainer', 'compare');
+      this.saveSetting('lastSite', siteKey, 'local');
+      return;
+    }
+
     if (cfg.embeddable === false) {
       this.showNonEmbeddableMessage(siteKey);
       this.saveSetting('lastSite', siteKey, 'local');
@@ -469,15 +498,28 @@ class AiChatHub {
     this.saveSetting('lastSite', siteKey, 'local');
   }
 
+  ensureCompareView() {
+    if (this.compareView) return;
+    this.compareView = new CompareView({
+      root: this.elements.compareContainer,
+      canPopout: true,
+    });
+    this.compareView.init();
+  }
+
   showWelcomeScreen() {
     this.showView('welcomeScreen', null);
     this.saveSetting('lastSite', null, 'local');
   }
 
   reloadCurrentView() {
-    if (this.currentSiteKey && SITE_CONFIGS[this.currentSiteKey]?.kind === 'web') {
-      const src = this.elements.webFrame.src;
-      this.elements.webFrame.src = src;
+    const cfg = this.currentSiteKey && SITE_CONFIGS[this.currentSiteKey];
+    if (!cfg) return;
+    if (cfg.kind === 'web') {
+      this.elements.webFrame.src = this.elements.webFrame.src;
+    } else if (cfg.kind === 'compare' && this.compareView) {
+      // Reload all panels at once.
+      for (const key of CompareView.BROADCAST_SITES) this.compareView.reloadPanel(key);
     }
   }
 
