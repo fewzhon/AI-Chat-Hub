@@ -975,12 +975,41 @@ class AiChatHub {
     this.updateSendButtonState();
     const typingEl = this.showTypingIndicator();
 
-    try {
-      const reply = await this.callGeminiApi();
+    let bubble = null;
+    let contentEl = null;
+    let fullText = '';
+
+    const ensureBubble = () => {
+      if (bubble) return;
       this.removeTypingIndicator(typingEl);
-      this.appendChatTurn({ role: 'model', text: reply });
+      bubble = this.renderMessage('model', '', { streaming: true });
+      contentEl = bubble.querySelector('.content');
+    };
+
+    try {
+      fullText = await this.callGeminiApiStream((chunkText) => {
+        ensureBubble();
+        contentEl.innerHTML = window.renderMarkdown(chunkText);
+        this.maybeAutoScroll();
+      });
+
+      // Finalise: render one last time without the streaming cursor.
+      ensureBubble();
+      bubble.classList.remove('streaming');
+      contentEl.innerHTML = window.renderMarkdown(fullText);
+      this.scrollMessagesToBottom();
+
+      // Persist the complete turn now that we have it all.
+      this.chatHistory.push({ role: 'model', text: fullText });
+      if (this.chatHistory.length > MAX_CHAT_HISTORY) {
+        this.chatHistory = this.chatHistory.slice(-MAX_CHAT_HISTORY);
+      }
+      this.saveChatHistory();
     } catch (err) {
       this.removeTypingIndicator(typingEl);
+      // If a bubble was created but the stream then failed, drop it so
+      // we don't leave a half-finished assistant turn behind.
+      if (bubble && bubble.parentNode) bubble.parentNode.removeChild(bubble);
       const message = this.formatApiError(err);
       this.renderMessage('error', message);
       console.error('Gemini API error:', err);
@@ -991,8 +1020,11 @@ class AiChatHub {
     }
   }
 
-  async callGeminiApi() {
-    const url = `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+  async callGeminiApiStream(onChunk) {
+    const url =
+      `${GEMINI_API_BASE}/${GEMINI_MODEL}:streamGenerateContent` +
+      `?alt=sse&key=${encodeURIComponent(this.apiKey)}`;
+
     const body = {
       contents: this.chatHistory.map((turn) => ({
         role: turn.role,
@@ -1014,19 +1046,70 @@ class AiChatHub {
       throw err;
     }
 
-    const data = await response.json();
-    const candidate = data.candidates && data.candidates[0];
-    const parts = candidate && candidate.content && candidate.content.parts;
-    const text = Array.isArray(parts) ? parts.map((p) => p.text || '').join('') : '';
+    if (!response.body) {
+      throw new Error('Streaming not supported by this browser.');
+    }
 
-    if (!text) {
-      const blockReason = data.promptFeedback && data.promptFeedback.blockReason;
-      const finishReason = candidate && candidate.finishReason;
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let fullText = '';
+    let blockReason = null;
+    let finishReason = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE delimits events with blank lines. Each event contains one
+      // or more `data:` lines; an event ends when we see a `\n\n`.
+      let sepIdx;
+      while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, sepIdx);
+        buffer = buffer.slice(sepIdx + 2);
+
+        const dataLines = rawEvent
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trimStart());
+        if (dataLines.length === 0) continue;
+
+        const payload = dataLines.join('\n');
+        if (!payload || payload === '[DONE]') continue;
+
+        let parsed;
+        try {
+          parsed = JSON.parse(payload);
+        } catch {
+          continue;
+        }
+
+        const candidate = parsed.candidates && parsed.candidates[0];
+        if (candidate) {
+          const parts = candidate.content && candidate.content.parts;
+          if (Array.isArray(parts)) {
+            for (const p of parts) {
+              if (typeof p.text === 'string') fullText += p.text;
+            }
+          }
+          if (candidate.finishReason) finishReason = candidate.finishReason;
+        }
+        if (parsed.promptFeedback && parsed.promptFeedback.blockReason) {
+          blockReason = parsed.promptFeedback.blockReason;
+        }
+
+        if (fullText) onChunk(fullText);
+      }
+    }
+
+    if (!fullText) {
       const detail = blockReason || finishReason || 'no content returned';
       throw new Error(`Empty response from Gemini (${detail})`);
     }
 
-    return text;
+    return fullText;
   }
 
   formatApiError(err) {
@@ -1057,11 +1140,13 @@ class AiChatHub {
     this.saveChatHistory();
   }
 
-  renderMessage(role, text) {
+  renderMessage(role, text, opts) {
     if (this.elements.messagesEmpty) this.elements.messagesEmpty.classList.add('hidden');
 
     const wrapper = document.createElement('div');
-    wrapper.className = `message ${role === 'user' ? 'user' : role === 'error' ? 'error' : 'assistant'}`;
+    const variant = role === 'user' ? 'user' : role === 'error' ? 'error' : 'assistant';
+    wrapper.className = `message ${variant}`;
+    if (opts && opts.streaming) wrapper.classList.add('streaming');
 
     const iconChar = role === 'user' ? '👤' : role === 'error' ? '!' : '✨';
     const icon = document.createElement('div');
@@ -1070,7 +1155,15 @@ class AiChatHub {
 
     const content = document.createElement('div');
     content.className = 'content';
-    content.textContent = text;
+
+    // Markdown is rendered for assistant replies only. User and error
+    // bubbles stay as plain text so we never let user input or our own
+    // error strings interpret as HTML.
+    if (role === 'model' && window.renderMarkdown) {
+      content.innerHTML = window.renderMarkdown(text || '');
+    } else {
+      content.textContent = text;
+    }
 
     wrapper.appendChild(icon);
     wrapper.appendChild(content);
@@ -1106,6 +1199,15 @@ class AiChatHub {
   scrollMessagesToBottom() {
     const m = this.elements.messages;
     m.scrollTop = m.scrollHeight;
+  }
+
+  // Only stick the view to the bottom while the user is already there;
+  // if they've scrolled up to read earlier content, leave them be.
+  maybeAutoScroll() {
+    const m = this.elements.messages;
+    const threshold = 80;
+    const atBottom = m.scrollHeight - m.scrollTop - m.clientHeight < threshold;
+    if (atBottom) m.scrollTop = m.scrollHeight;
   }
 
   autoResizeTextarea() {

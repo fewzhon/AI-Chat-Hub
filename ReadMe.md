@@ -11,6 +11,7 @@ A versatile Chrome extension to access multiple AI assistants from a side panel 
 - **17 AI services out of the box**: Gemini, ChatGPT, Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek, Mistral, Poe, You.com, Qwen, Kimi, Z.ai, Genspark - plus a built-in Quick Chat using the Gemini API and a Compare mode that broadcasts one prompt to several AIs at once.
 - **Compare mode (multi-AI broadcast)**: Send a single prompt to Gemini, ChatGPT, Claude, Perplexity, and DeepSeek simultaneously. Each AI is shown in its own collapsible panel with a checkbox to toggle inclusion. Click "Pop out" to open the full-tab popout with 1/2/3-column layouts; the prompt and selected AIs carry over via `chrome.storage.session`.
 - **Prompt library**: Save commonly-used prompts and insert them with one click from Quick Chat or Compare via the 📋 picker. Search across saved titles and bodies; manage (add / edit / delete) prompts from a dedicated Prompts view. Comes pre-seeded with four starter prompts (deletable) and persists to `chrome.storage.local`.
+- **Quick Chat polish — streaming + Markdown**: Assistant replies stream in token-by-token using Gemini's `streamGenerateContent` endpoint (no more long blank waits), with a blinking cursor while a reply is in progress. Replies are rendered as Markdown — bold, italics, headings, ordered/unordered lists, fenced code blocks, inline code, and links all display with proper formatting. The Markdown renderer is XSS-safe (HTML is escaped before any token transforms) and streaming-safe (in-progress code blocks render correctly until they close).
 - **Light, Dark, and System themes**: Pick your preferred theme from settings; "System" automatically follows your OS preference and live-updates on changes.
 - **Direct API chat**: Talk to the Gemini API with your own key - send/receive messages with full conversation context, persisted locally. Defaults to `gemini-2.5-flash`. Your API key and chat history are stored locally via `chrome.storage.local`.
 - **Resilient iframe loading**: Each service has fallback URLs - if the main URL fails to embed, the extension automatically tries alternatives. Sites that can't be embedded show a clean "Open in new tab" fallback page.
@@ -60,6 +61,11 @@ AI-Chat-Hub/
     2.  Pick a saved prompt to insert it into the input (it replaces any selected text, or inserts at the cursor).
     3.  Click "Manage prompts..." in the picker to open the Prompts management view in the side panel (add / edit / delete).
     4.  Prompts are stored locally via `chrome.storage.local` and live-update across the side panel and popout if you edit them in one place.
+- **Quick Chat — streaming & Markdown**:
+    -   Replies stream in as Gemini generates them; a blinking cursor marks the active assistant message.
+    -   Common Markdown is rendered automatically (bold, italics, `inline code`, fenced code blocks with language hints, ordered/unordered lists, headings, horizontal rules, links).
+    -   Links open in new tabs with `rel="noopener noreferrer"`; only `http(s)://` and `mailto:` schemes are honoured.
+    -   Auto-scrolling sticks to the bottom only while you're already there; scroll up to read earlier content and the view stays put.
 - **API Chat (Quick Chat)**:
     1.  Click the ✨ Quick Chat tab.
     2.  On first use you'll be asked for a Gemini API key. Get one from [Google AI Studio](https://aistudio.google.com/app/apikey).
