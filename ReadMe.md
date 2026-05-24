@@ -8,7 +8,8 @@ A versatile Chrome extension to access multiple AI assistants from a side panel 
 ## ✨ Features
 
 - **Persistent tab bar**: Always-visible scrollable tab strip at the top of the side panel. One click switches between any AI - no more navigating back to the welcome screen first.
-- **16 AI services out of the box**: Gemini, ChatGPT, Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek, Mistral, Poe, You.com, Qwen, Kimi, Z.ai, Genspark - plus a built-in Quick Chat using the Gemini API.
+- **17 AI services out of the box**: Gemini, ChatGPT, Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek, Mistral, Poe, You.com, Qwen, Kimi, Z.ai, Genspark - plus a built-in Quick Chat using the Gemini API and a Compare mode that broadcasts one prompt to several AIs at once.
+- **Compare mode (multi-AI broadcast)**: Send a single prompt to Gemini, ChatGPT, Claude, Perplexity, and DeepSeek simultaneously. Each AI is shown in its own collapsible panel with a checkbox to toggle inclusion. Click "Pop out" to open the full-tab popout with 1/2/3-column layouts; the prompt and selected AIs carry over via `chrome.storage.session`.
 - **Light, Dark, and System themes**: Pick your preferred theme from settings; "System" automatically follows your OS preference and live-updates on changes.
 - **Direct API chat**: Talk to the Gemini API with your own key - send/receive messages with full conversation context, persisted locally. Defaults to `gemini-2.5-flash`. Your API key and chat history are stored locally via `chrome.storage.local`.
 - **Resilient iframe loading**: Each service has fallback URLs - if the main URL fails to embed, the extension automatically tries alternatives. Sites that can't be embedded show a clean "Open in new tab" fallback page.
@@ -47,6 +48,12 @@ AI-Chat-Hub/
 - **Opening the Hub**: Click the extension icon in your Chrome toolbar to open the AI Chat Hub in the side panel.
 - **Switching AIs**: Use the tab bar at the top to instantly switch between services. The 🏠 button on the left returns to the home/welcome screen; ↻ reloads the current view; ⚙️ opens settings.
 - **Welcome / Home view**: Lists every service as a card. Each web service also has a ↗ button that opens the service in a new browser tab (useful when a service is being uncooperative inside the iframe).
+- **Compare mode**:
+    1.  Click the 🔄 Compare tab (or the Compare card on the home screen).
+    2.  Type a prompt at the top, uncheck any AIs you don't want to receive it, press Enter (or click Send).
+    3.  Each panel can be collapsed, reloaded, or opened in a new browser tab via its mini-toolbar.
+    4.  Click ↗ Pop out to open the same view in a full browser tab with 1, 2, or 3-column layouts.
+    5.  Selectors for each AI's prompt input and send button are bundled in `broadcast-injector.js` and may need occasional tuning if a site redesigns its DOM. Failures show as a per-panel error stripe; they don't break other panels.
 - **API Chat (Quick Chat)**:
     1.  Click the ✨ Quick Chat tab.
     2.  On first use you'll be asked for a Gemini API key. Get one from [Google AI Studio](https://aistudio.google.com/app/apikey).

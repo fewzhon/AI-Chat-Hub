@@ -527,7 +527,16 @@
       .tab .tab-label { display: none; }
       .tab { padding: 0 10px; }
     }
+
+    /* The Compare view fills the side panel below the tab bar and uses
+       its own scrolling, so disable the body view's default overflow. */
+    #compareContainer.view {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
   </style>
+  <link rel="stylesheet" href="compare.css">
 </head>
 <body>
 
@@ -560,15 +569,21 @@
       <div class="section-heading">Direct API</div>
       <div class="option-cards" id="apiCards"></div>
 
+      <div class="section-heading">Compare</div>
+      <div class="option-cards" id="compareCards"></div>
+
       <div class="section-heading">Web Services</div>
       <div class="option-cards" id="webCards"></div>
     </div>
   </div>
 
-  <!-- Iframe container -->
+  <!-- Iframe container (single-AI view) -->
   <div id="webContainer" class="view hidden">
     <iframe id="webFrame" src="" frameborder="0"></iframe>
   </div>
+
+  <!-- Compare / multi-AI broadcast view -->
+  <div id="compareContainer" class="view hidden"></div>
 
   <!-- API key setup -->
   <div id="apiKeySetup" class="view hidden">
@@ -654,6 +669,7 @@
     </div>
   </div>
 
+  <script src="compare-controller.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
