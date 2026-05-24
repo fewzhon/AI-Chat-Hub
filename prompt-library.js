@@ -25,18 +25,20 @@
   const STORAGE_KEY = 'promptLibrary';
 
   // Shipped on first install. Users can delete or edit them freely.
+  // Two of these showcase the {{placeholder}} feature so new users
+  // discover it without having to read the docs.
   const DEFAULT_PROMPTS = [
     {
       title: 'Summarize',
       body: 'Summarize the following text in 3-5 concise bullet points, focused on the key takeaways:\n\n',
     },
     {
-      title: 'Explain like I\'m 5',
-      body: 'Explain the following concept in simple, plain language a 10-year-old could understand. Use analogies where helpful:\n\n',
+      title: 'Explain a topic',
+      body: 'Explain {{topic}} in clear, simple language a 10-year-old could understand. Use analogies where helpful.',
     },
     {
       title: 'Code review',
-      body: 'Review the following code for correctness, readability, and potential bugs. List your findings as numbered items with concrete suggestions:\n\n```\n\n```',
+      body: 'Review the following {{language}} code for correctness, readability, and potential bugs. List your findings as numbered items with concrete suggestions:\n\n```{{language}}\n\n```',
     },
     {
       title: 'Translate to plain English',
