@@ -184,9 +184,12 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models
 // past this count are dropped from BOTH UI and storage.
 const MAX_CHAT_HISTORY = 100;
 
-// Display order in tabs and on the welcome screen. Edit this to reorder
-// without changing the config objects themselves.
-const TAB_ORDER = [
+// Display order in tabs and on the welcome screen for first-time users.
+// Once the user reorders, removes, or adds tabs, their saved
+// `userTabOrder` (chrome.storage.local) takes over. Keep this list as
+// the canonical set of platforms shipped with the extension - any new
+// platform added here is available via the "+" picker.
+const DEFAULT_TAB_ORDER = [
   'api',
   'compare',
   'gemini',
@@ -295,10 +298,21 @@ class AiChatHub {
     this.previousViewBeforeManage = 'welcomeScreen';
     this.previousSiteKeyBeforeManage = null;
 
+    // Customisable tab bar: which tabs the user keeps, and in what
+    // order. Defaults to DEFAULT_TAB_ORDER until the user customises.
+    this.userTabOrder = [...DEFAULT_TAB_ORDER];
+    this.dragState = null;
+    this.addTabPopover = null;
+    this.addTabHandlers = null;
+
     this.init();
   }
 
   async init() {
+    // Load the persisted tab order before any rendering so the first
+    // paint already reflects the user's customisation.
+    await this.loadTabOrder();
+
     this.renderWelcomeCards();
     this.renderTabBar();
     this.setupEventListeners();
@@ -315,6 +329,96 @@ class AiChatHub {
   }
 
   // ------------------------------------------------------------------
+  // Tab order persistence + helpers
+  // ------------------------------------------------------------------
+
+  async loadTabOrder() {
+    try {
+      const stored = await chrome.storage.local.get({ userTabOrder: null });
+      if (Array.isArray(stored.userTabOrder) && stored.userTabOrder.length > 0) {
+        // Drop any keys that are no longer in SITE_CONFIGS (defensive
+        // against future renames). Keep saved order otherwise.
+        this.userTabOrder = stored.userTabOrder.filter((k) => SITE_CONFIGS[k]);
+        if (this.userTabOrder.length === 0) this.userTabOrder = [...DEFAULT_TAB_ORDER];
+      } else {
+        this.userTabOrder = [...DEFAULT_TAB_ORDER];
+      }
+    } catch (err) {
+      console.error('loadTabOrder failed:', err);
+      this.userTabOrder = [...DEFAULT_TAB_ORDER];
+    }
+  }
+
+  async saveTabOrder() {
+    try {
+      await chrome.storage.local.set({ userTabOrder: this.userTabOrder });
+    } catch (err) {
+      console.error('saveTabOrder failed:', err);
+    }
+  }
+
+  getActiveTabKeys() {
+    return this.userTabOrder.filter((k) => SITE_CONFIGS[k]);
+  }
+
+  getAvailablePlatforms() {
+    return DEFAULT_TAB_ORDER.filter(
+      (k) => SITE_CONFIGS[k] && !this.userTabOrder.includes(k)
+    );
+  }
+
+  async addTab(key) {
+    if (!SITE_CONFIGS[key]) return;
+    if (this.userTabOrder.includes(key)) return;
+    this.userTabOrder.push(key);
+    await this.saveTabOrder();
+    this.renderTabBar();
+    this.renderWelcomeCards();
+    this.handleOptionClick(key);
+  }
+
+  async removeTab(key) {
+    const idx = this.userTabOrder.indexOf(key);
+    if (idx < 0) return;
+    const wasActive = this.currentSiteKey === key;
+    this.userTabOrder.splice(idx, 1);
+    await this.saveTabOrder();
+    this.renderTabBar();
+    this.renderWelcomeCards();
+
+    if (!wasActive) return;
+    // If the removed tab was active, fall back to the tab that took
+    // its position (or the previous one), and finally Home.
+    const nextKey = this.userTabOrder[idx] || this.userTabOrder[idx - 1] || null;
+    if (nextKey) {
+      this.handleOptionClick(nextKey);
+    } else {
+      this.currentSiteKey = null;
+      this.showView('welcomeScreen', null);
+    }
+  }
+
+  async reorderTabs(fromKey, toKey, insertBefore) {
+    if (fromKey === toKey) return;
+    const order = this.userTabOrder;
+    const fromIdx = order.indexOf(fromKey);
+    if (fromIdx < 0) return;
+    order.splice(fromIdx, 1);
+
+    let toIdx = order.indexOf(toKey);
+    if (toIdx < 0) {
+      // Drop target no longer present (race): append.
+      order.push(fromKey);
+    } else {
+      if (!insertBefore) toIdx += 1;
+      order.splice(toIdx, 0, fromKey);
+    }
+    await this.saveTabOrder();
+    this.renderTabBar();
+    this.renderWelcomeCards();
+  }
+
+  // ------------------------------------------------------------------
   // Rendering
   // ------------------------------------------------------------------
 
@@ -322,21 +426,178 @@ class AiChatHub {
     const strip = this.elements.tabStrip;
     strip.innerHTML = '';
 
-    for (const key of TAB_ORDER) {
+    for (const key of this.getActiveTabKeys()) {
       const cfg = SITE_CONFIGS[key];
       if (!cfg) continue;
-      const btn = document.createElement('button');
-      btn.className = 'tab';
-      btn.dataset.siteKey = key;
-      btn.setAttribute('role', 'tab');
-      btn.title = cfg.name;
-      btn.innerHTML = `
-        <span class="tab-icon" aria-hidden="true">${cfg.icon}</span>
-        <span class="tab-label">${cfg.name}</span>
-      `;
-      btn.addEventListener('click', () => this.handleOptionClick(key));
-      strip.appendChild(btn);
+      strip.appendChild(this.buildTabButton(key, cfg));
     }
+
+    strip.appendChild(this.buildAddTabButton());
+
+    // Reflect the active tab visually right after re-render (e.g. after
+    // a reorder so the highlight follows the moved tab).
+    if (this.currentSiteKey) {
+      const activeBtn = strip.querySelector(`[data-site-key="${CSS.escape(this.currentSiteKey)}"]`);
+      if (activeBtn) activeBtn.classList.add('is-active');
+    }
+  }
+
+  buildTabButton(key, cfg) {
+    const btn = document.createElement('button');
+    btn.className = 'tab';
+    btn.dataset.siteKey = key;
+    btn.setAttribute('role', 'tab');
+    btn.title = cfg.name;
+    btn.draggable = true;
+    btn.innerHTML = `
+      <span class="tab-icon" aria-hidden="true">${cfg.icon}</span>
+      <span class="tab-label">${cfg.name}</span>
+      <span class="tab-close" role="button" aria-label="Remove ${cfg.name} tab" title="Remove">×</span>
+    `;
+    btn.addEventListener('click', (e) => {
+      if (e.target.closest('.tab-close')) return; // close button handles itself
+      this.handleOptionClick(key);
+    });
+    const closeEl = btn.querySelector('.tab-close');
+    closeEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.removeTab(key);
+    });
+
+    this.attachTabDragHandlers(btn, key);
+    return btn;
+  }
+
+  attachTabDragHandlers(btn, key) {
+    btn.addEventListener('dragstart', (e) => {
+      this.dragState = { key };
+      btn.classList.add('dragging');
+      // Some browsers refuse to start a drag without setData being called.
+      try { e.dataTransfer.setData('text/plain', key); } catch {}
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    btn.addEventListener('dragover', (e) => {
+      if (!this.dragState || this.dragState.key === key) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const rect = btn.getBoundingClientRect();
+      const before = e.clientX < rect.left + rect.width / 2;
+      btn.classList.toggle('drop-before', before);
+      btn.classList.toggle('drop-after', !before);
+    });
+
+    btn.addEventListener('dragleave', () => {
+      btn.classList.remove('drop-before', 'drop-after');
+    });
+
+    btn.addEventListener('drop', (e) => {
+      btn.classList.remove('drop-before', 'drop-after');
+      if (!this.dragState || this.dragState.key === key) return;
+      e.preventDefault();
+      const rect = btn.getBoundingClientRect();
+      const before = e.clientX < rect.left + rect.width / 2;
+      this.reorderTabs(this.dragState.key, key, before);
+    });
+
+    btn.addEventListener('dragend', () => {
+      btn.classList.remove('dragging');
+      this.elements.tabStrip
+        .querySelectorAll('.tab.drop-before, .tab.drop-after')
+        .forEach((el) => el.classList.remove('drop-before', 'drop-after'));
+      this.dragState = null;
+    });
+  }
+
+  buildAddTabButton() {
+    const btn = document.createElement('button');
+    btn.className = 'tab-add';
+    btn.id = 'addTabBtn';
+    btn.type = 'button';
+    btn.title = 'Add a platform';
+    btn.setAttribute('aria-label', 'Add a platform');
+    btn.textContent = '+';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleAddTabPopover(btn);
+    });
+    return btn;
+  }
+
+  toggleAddTabPopover(anchor) {
+    if (this.addTabPopover) this.closeAddTabPopover();
+    else this.openAddTabPopover(anchor);
+  }
+
+  openAddTabPopover(anchor) {
+    const available = this.getAvailablePlatforms();
+    const popover = document.createElement('div');
+    popover.className = 'add-tab-popover';
+
+    if (available.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'add-tab-empty';
+      empty.textContent = 'All platforms are in your tab bar.';
+      popover.appendChild(empty);
+    } else {
+      for (const key of available) {
+        const cfg = SITE_CONFIGS[key];
+        const row = document.createElement('button');
+        row.className = 'add-tab-row';
+        row.innerHTML = `
+          <span class="add-tab-row-icon" aria-hidden="true">${cfg.icon}</span>
+          <span class="add-tab-row-name"></span>
+        `;
+        row.querySelector('.add-tab-row-name').textContent = cfg.name;
+        row.addEventListener('click', () => {
+          this.closeAddTabPopover();
+          this.addTab(key);
+        });
+        popover.appendChild(row);
+      }
+    }
+
+    document.body.appendChild(popover);
+    const rect = anchor.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    // Position the popover below the + button, right-aligned to it.
+    const left = Math.max(
+      8,
+      Math.min(rect.right - 240, window.innerWidth - 240 - 8)
+    );
+    popover.style.top = `${rect.bottom + 6}px`;
+    popover.style.left = `${left}px`;
+    popover.style.width = '240px';
+
+    const onDocClick = (event) => {
+      if (popover.contains(event.target)) return;
+      if (anchor.contains(event.target)) return;
+      this.closeAddTabPopover();
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') this.closeAddTabPopover();
+    };
+    setTimeout(() => {
+      document.addEventListener('mousedown', onDocClick);
+      document.addEventListener('keydown', onKey);
+    }, 0);
+
+    this.addTabPopover = popover;
+    this.addTabHandlers = { onDocClick, onKey, anchor };
+    anchor.classList.add('is-open');
+  }
+
+  closeAddTabPopover() {
+    if (!this.addTabPopover) return;
+    if (this.addTabPopover.parentNode) {
+      this.addTabPopover.parentNode.removeChild(this.addTabPopover);
+    }
+    const { onDocClick, onKey, anchor } = this.addTabHandlers || {};
+    if (onDocClick) document.removeEventListener('mousedown', onDocClick);
+    if (onKey) document.removeEventListener('keydown', onKey);
+    if (anchor) anchor.classList.remove('is-open');
+    this.addTabPopover = null;
+    this.addTabHandlers = null;
   }
 
   renderWelcomeCards() {
@@ -347,7 +608,7 @@ class AiChatHub {
     webContainer.innerHTML = '';
     compareContainer.innerHTML = '';
 
-    for (const key of TAB_ORDER) {
+    for (const key of this.getActiveTabKeys()) {
       const cfg = SITE_CONFIGS[key];
       if (!cfg) continue;
 
@@ -908,7 +1169,11 @@ class AiChatHub {
 
   async loadLastState() {
     const { lastSite } = await this.loadSetting('lastSite', 'local');
-    if (lastSite && SITE_CONFIGS[lastSite]) {
+    // Restore the last viewed tab only if it's both a valid platform
+    // AND still in the user's customised tab list. If the user removed
+    // it from the tab bar in a previous session, fall back to Home so
+    // we don't auto-add a removed tab back via the active-state.
+    if (lastSite && SITE_CONFIGS[lastSite] && this.userTabOrder.includes(lastSite)) {
       this.handleOptionClick(lastSite);
     } else {
       this.showWelcomeScreen();
