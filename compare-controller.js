@@ -32,14 +32,18 @@
   class CompareView {
     /**
      * @param {Object} opts
-     * @param {HTMLElement} opts.root      The container element to render into.
-     * @param {boolean}     opts.canPopout Whether to render the "Pop out to tab" button (side panel only).
-     * @param {Function}    [opts.onPopout] Callback when popout is clicked; if omitted, falls back to default behavior.
+     * @param {HTMLElement}    opts.root          The container element to render into.
+     * @param {boolean}        opts.canPopout     Whether to render the "Pop out to tab" button (side panel only).
+     * @param {Function}       [opts.onPopout]    Callback when popout is clicked; if omitted, falls back to default behavior.
+     * @param {Object}         [opts.promptLibrary] Optional shared PromptLibrary instance; if omitted, a fresh one is created.
+     * @param {Function}       [opts.onManagePrompts] Optional callback when the picker's "Manage prompts" link is clicked.
      */
     constructor(opts) {
       this.root = opts.root;
       this.canPopout = !!opts.canPopout;
       this.onPopout = opts.onPopout;
+      this.promptLibrary = opts.promptLibrary || (window.PromptLibrary ? new window.PromptLibrary() : null);
+      this.onManagePrompts = opts.onManagePrompts;
 
       this.iframes = {};        // siteKey -> HTMLIFrameElement
       this.statusEls = {};      // siteKey -> status display element
@@ -47,6 +51,7 @@
       this.readyStates = {};    // siteKey -> 'loading' | 'ready' | 'not-found'
       this.lastSent = {};       // siteKey -> { ok, error?, at }
       this.broadcasting = false;
+      this.promptPicker = null;
 
       this.handleMessage = this.handleMessage.bind(this);
       window.addEventListener('message', this.handleMessage);
@@ -57,6 +62,26 @@
       await this.restoreState();
       this.attachListeners();
       this.refreshSendButtonState();
+
+      // Prompt picker (only if library + PromptPicker are available in
+      // this context). The picker is mounted to the dedicated button
+      // built by `buildPromptBar`.
+      if (this.promptLibrary && window.PromptPicker && this.pickerBtn) {
+        if (!this.promptLibrary.loaded) {
+          try { await this.promptLibrary.load(); } catch {}
+        }
+        this.promptPicker = new window.PromptPicker({
+          anchorBtn: this.pickerBtn,
+          targetInput: this.promptInput,
+          library: this.promptLibrary,
+          onManageClick: () => {
+            if (typeof this.onManagePrompts === 'function') this.onManagePrompts();
+          },
+        });
+      } else if (this.pickerBtn) {
+        // No picker available in this context (popout without library).
+        this.pickerBtn.classList.add('hidden');
+      }
     }
 
     // ------------------------------------------------------------------
@@ -74,6 +99,13 @@
     buildPromptBar() {
       const bar = document.createElement('div');
       bar.className = 'compare-prompt-bar';
+
+      const pickerBtn = document.createElement('button');
+      pickerBtn.id = 'comparePromptPicker';
+      pickerBtn.className = 'compare-picker-btn';
+      pickerBtn.title = 'Insert a saved prompt';
+      pickerBtn.textContent = '📋';
+      this.pickerBtn = pickerBtn;
 
       const textarea = document.createElement('textarea');
       textarea.id = 'comparePromptInput';
@@ -94,6 +126,7 @@
       this.popoutBtn = popoutBtn;
       if (!this.canPopout) popoutBtn.classList.add('hidden');
 
+      bar.appendChild(pickerBtn);
       bar.appendChild(textarea);
       bar.appendChild(sendBtn);
       bar.appendChild(popoutBtn);
@@ -372,6 +405,7 @@
 
     destroy() {
       window.removeEventListener('message', this.handleMessage);
+      if (this.promptPicker) this.promptPicker.destroy();
       this.root.innerHTML = '';
     }
   }

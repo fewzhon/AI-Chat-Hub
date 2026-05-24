@@ -19,7 +19,19 @@
   } catch {}
 
   const root = document.getElementById('compareRoot');
-  const view = new CompareView({ root, canPopout: false });
+
+  // The popout shares the prompt library, but doesn't expose the manage
+  // view (that lives in the side panel). Clicking "Manage prompts..."
+  // from the picker is a no-op here apart from closing the popover;
+  // users can open the side panel to manage their library.
+  const library = new PromptLibrary();
+  await library.load();
+
+  const view = new CompareView({
+    root,
+    canPopout: false,
+    promptLibrary: library,
+  });
   await view.init();
 
   // Layout selector (only available in the full-tab popout).
