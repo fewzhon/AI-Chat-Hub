@@ -10,7 +10,7 @@ A versatile Chrome extension to access multiple AI assistants from a side panel 
 - **Persistent tab bar**: Always-visible scrollable tab strip at the top of the side panel. One click switches between any AI - no more navigating back to the welcome screen first.
 - **16 AI services out of the box**: Gemini, ChatGPT, Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek, Mistral, Poe, You.com, Qwen, Kimi, Z.ai, Genspark - plus a built-in Quick Chat using the Gemini API.
 - **Light, Dark, and System themes**: Pick your preferred theme from settings; "System" automatically follows your OS preference and live-updates on changes.
-- **Direct API chat**: Talk to the Gemini API with your own key. Your API key is stored locally in your browser via `chrome.storage.local`.
+- **Direct API chat**: Talk to the Gemini API with your own key - send/receive messages with full conversation context, persisted locally. Defaults to `gemini-2.5-flash`. Your API key and chat history are stored locally via `chrome.storage.local`.
 - **Resilient iframe loading**: Each service has fallback URLs - if the main URL fails to embed, the extension automatically tries alternatives. Sites that can't be embedded show a clean "Open in new tab" fallback page.
 - **Gemini Enter key blocker**: Optional content script that intercepts Enter on the Gemini website so it inserts a newline; Shift+Enter sends. Useful for avoiding accidental submissions.
 - **Last-state restore**: Re-opens the panel on whichever service you were last using.
@@ -50,11 +50,13 @@ AI-Chat-Hub/
 - **API Chat (Quick Chat)**:
     1.  Click the ✨ Quick Chat tab.
     2.  On first use you'll be asked for a Gemini API key. Get one from [Google AI Studio](https://aistudio.google.com/app/apikey).
-    3.  Your key is saved locally; subsequent visits go straight to the chat view.
+    3.  Type a message and press Enter to send (Shift+Enter inserts a newline). Conversation context is maintained across turns.
+    4.  Use the **Clear** button in the chat header (or the equivalent in Settings) to wipe the conversation.
 - **Settings**:
     - **Theme** - Light / System / Dark.
     - **Gemini Enter Key Blocker** - toggles the content script on gemini.google.com.
     - **Change API Key** - replace your stored Gemini API key.
+    - **Clear Chat History** - wipe the saved Quick Chat conversation.
 
 ## ➕ Adding Your Own AI Service
 

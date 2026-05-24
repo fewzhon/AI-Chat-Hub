@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Chat Hub",
-  "version": "1.5",
+  "version": "1.6",
   "description": "Access multiple AI assistants in Chrome's side panel via a persistent tab bar. Includes a built-in Gemini API chat and per-site quality-of-life tweaks.",
   "permissions": [
     "sidePanel",
@@ -10,6 +10,7 @@
     "declarativeNetRequest"
   ],
   "host_permissions": [
+    "https://generativelanguage.googleapis.com/*",
     "https://*.google.com/*",
     "https://*.googleusercontent.com/*",
     "https://*.gstatic.com/*",
