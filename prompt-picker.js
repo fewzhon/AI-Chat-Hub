@@ -11,6 +11,36 @@
 // .prompt-popover element rooted at <body>.
 
 (function () {
+  // Variable placeholder syntax: {{name}} where name = [\w-]+.
+  // We allow optional surrounding whitespace inside the braces so a
+  // human-friendly `{{ topic }}` works the same as `{{topic}}`.
+  const VARIABLE_RE = /\{\{\s*([\w-]+)\s*\}\}/g;
+
+  function extractVariables(body) {
+    const seen = new Set();
+    const order = [];
+    let match;
+    VARIABLE_RE.lastIndex = 0;
+    while ((match = VARIABLE_RE.exec(body)) !== null) {
+      const name = match[1];
+      if (!seen.has(name)) {
+        seen.add(name);
+        order.push(name);
+      }
+    }
+    return order;
+  }
+
+  function substituteVariables(body, values) {
+    return body.replace(VARIABLE_RE, (full, name) => {
+      const replacement = values[name];
+      // Preserve the literal placeholder if the user left a field blank
+      // OR if the variable name wasn't in the form (defensive).
+      if (replacement === undefined || replacement === '') return full;
+      return replacement;
+    });
+  }
+
   class PromptPicker {
     /**
      * @param {Object}            opts
@@ -28,6 +58,9 @@
       this.popover = null;
       this.isOpen = false;
       this.searchTerm = '';
+      this.mode = 'list'; // 'list' | 'variables'
+      this.pendingPrompt = null;
+      this.pendingVariables = [];
 
       this.unsubscribe = this.library.subscribe(() => {
         if (this.isOpen) this.renderList();
@@ -51,6 +84,9 @@
     open() {
       if (this.isOpen) return;
       this.isOpen = true;
+      this.mode = 'list';
+      this.pendingPrompt = null;
+      this.pendingVariables = [];
       this.popover = this.buildPopover();
       document.body.appendChild(this.popover);
       this.positionPopover();
@@ -72,6 +108,9 @@
       this.isOpen = false;
       if (this.popover) this.popover.remove();
       this.popover = null;
+      this.mode = 'list';
+      this.pendingPrompt = null;
+      this.pendingVariables = [];
       document.removeEventListener('mousedown', this.handleDocClick);
       document.removeEventListener('keydown', this.handleKey);
       this.anchorBtn.classList.remove('is-open');
@@ -85,7 +124,12 @@
     }
 
     handleKey(event) {
-      if (event.key === 'Escape') {
+      if (event.key !== 'Escape') return;
+      // Inside the variables form, Esc backs out to the list rather than
+      // closing the whole picker, so users don't lose their search.
+      if (this.mode === 'variables') {
+        this.switchToListMode();
+      } else {
         this.close();
         this.anchorBtn.focus();
       }
@@ -94,6 +138,14 @@
     buildPopover() {
       const popover = document.createElement('div');
       popover.className = 'prompt-popover';
+      // Mounted twice: a list section (search + items + manage link) and
+      // a variables-form section that swaps in when a placeholder-using
+      // prompt is selected. We toggle visibility by .hidden class so
+      // typed search state survives a quick detour into the form.
+
+      // List mode UI.
+      const list = document.createElement('div');
+      list.className = 'prompt-popover-mode prompt-popover-mode-list';
 
       const search = document.createElement('input');
       search.type = 'search';
@@ -105,8 +157,8 @@
         this.renderList();
       });
 
-      const list = document.createElement('div');
-      list.className = 'prompt-popover-list';
+      const listBody = document.createElement('div');
+      listBody.className = 'prompt-popover-list';
 
       const footer = document.createElement('div');
       footer.className = 'prompt-popover-footer';
@@ -120,9 +172,16 @@
       });
       footer.appendChild(manageLink);
 
-      popover.appendChild(search);
+      list.appendChild(search);
+      list.appendChild(listBody);
+      list.appendChild(footer);
+
+      // Variables mode UI (built empty; populated by showVariableForm).
+      const variables = document.createElement('div');
+      variables.className = 'prompt-popover-mode prompt-popover-mode-variables hidden';
+
       popover.appendChild(list);
-      popover.appendChild(footer);
+      popover.appendChild(variables);
       return popover;
     }
 
@@ -166,19 +225,151 @@
         const item = document.createElement('button');
         item.className = 'prompt-popover-item';
         item.dataset.id = prompt.id;
-        item.innerHTML = `
-          <div class="prompt-popover-item-title"></div>
-          <div class="prompt-popover-item-body"></div>
-        `;
-        item.querySelector('.prompt-popover-item-title').textContent = prompt.title;
-        item.querySelector('.prompt-popover-item-body').textContent = this.truncate(prompt.body);
 
-        item.addEventListener('click', () => {
-          this.applyPrompt(prompt);
-          this.close();
-        });
+        const titleEl = document.createElement('div');
+        titleEl.className = 'prompt-popover-item-title';
+        titleEl.textContent = prompt.title;
+
+        // Show a ⟨…⟩ badge next to titles that contain placeholders so
+        // users can see at a glance which prompts will ask for input.
+        const vars = extractVariables(prompt.body);
+        if (vars.length > 0) {
+          const badge = document.createElement('span');
+          badge.className = 'prompt-popover-item-badge';
+          badge.textContent = `⟨${vars.length} field${vars.length === 1 ? '' : 's'}⟩`;
+          badge.title = `Variables: ${vars.join(', ')}`;
+          titleEl.appendChild(badge);
+        }
+
+        const bodyEl = document.createElement('div');
+        bodyEl.className = 'prompt-popover-item-body';
+        bodyEl.textContent = this.truncate(prompt.body);
+
+        item.appendChild(titleEl);
+        item.appendChild(bodyEl);
+
+        item.addEventListener('click', () => this.selectPrompt(prompt));
         list.appendChild(item);
       }
+    }
+
+    selectPrompt(prompt) {
+      const vars = extractVariables(prompt.body);
+      if (vars.length === 0) {
+        this.applyPromptText(prompt.body);
+        this.close();
+        return;
+      }
+      this.pendingPrompt = prompt;
+      this.pendingVariables = vars;
+      this.showVariableForm();
+    }
+
+    showVariableForm() {
+      if (!this.popover || !this.pendingPrompt) return;
+      this.mode = 'variables';
+
+      const listMode = this.popover.querySelector('.prompt-popover-mode-list');
+      const formMode = this.popover.querySelector('.prompt-popover-mode-variables');
+      listMode.classList.add('hidden');
+      formMode.classList.remove('hidden');
+      formMode.innerHTML = '';
+
+      const header = document.createElement('div');
+      header.className = 'prompt-popover-var-header';
+      const title = document.createElement('div');
+      title.className = 'prompt-popover-var-title';
+      title.textContent = this.pendingPrompt.title;
+      header.appendChild(title);
+      formMode.appendChild(header);
+
+      const fields = document.createElement('div');
+      fields.className = 'prompt-popover-var-fields';
+      const inputs = [];
+
+      this.pendingVariables.forEach((name, idx) => {
+        const row = document.createElement('div');
+        row.className = 'prompt-popover-var-row';
+
+        const label = document.createElement('label');
+        label.className = 'prompt-popover-var-label';
+        label.textContent = name;
+
+        const input = document.createElement('textarea');
+        input.className = 'prompt-popover-var-input';
+        input.rows = 1;
+        input.placeholder = `Value for {{${name}}}`;
+        input.dataset.varName = name;
+        input.addEventListener('input', () => this.autoSizeVarInput(input));
+        input.addEventListener('keydown', (e) => this.handleVarKey(e, inputs, idx));
+        inputs.push(input);
+
+        row.appendChild(label);
+        row.appendChild(input);
+        fields.appendChild(row);
+      });
+
+      formMode.appendChild(fields);
+
+      const actions = document.createElement('div');
+      actions.className = 'prompt-popover-var-actions';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'prompt-popover-var-cancel';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', () => this.switchToListMode());
+
+      const insertBtn = document.createElement('button');
+      insertBtn.className = 'prompt-popover-var-insert';
+      insertBtn.textContent = 'Insert';
+      insertBtn.addEventListener('click', () => this.submitVariableForm(inputs));
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(insertBtn);
+      formMode.appendChild(actions);
+
+      this.positionPopover();
+      if (inputs.length > 0) inputs[0].focus();
+    }
+
+    autoSizeVarInput(input) {
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+    }
+
+    // Enter on the last field submits; Enter on intermediate fields
+    // jumps to the next input. Shift+Enter always inserts a newline.
+    handleVarKey(event, inputs, idx) {
+      if (event.key !== 'Enter' || event.shiftKey) return;
+      event.preventDefault();
+      if (idx < inputs.length - 1) {
+        inputs[idx + 1].focus();
+      } else {
+        this.submitVariableForm(inputs);
+      }
+    }
+
+    submitVariableForm(inputs) {
+      if (!this.pendingPrompt) return;
+      const values = {};
+      for (const input of inputs) values[input.dataset.varName] = input.value;
+      const resolved = substituteVariables(this.pendingPrompt.body, values);
+      this.applyPromptText(resolved);
+      this.close();
+    }
+
+    switchToListMode() {
+      if (!this.popover) return;
+      this.mode = 'list';
+      this.pendingPrompt = null;
+      this.pendingVariables = [];
+      const listMode = this.popover.querySelector('.prompt-popover-mode-list');
+      const formMode = this.popover.querySelector('.prompt-popover-mode-variables');
+      formMode.classList.add('hidden');
+      listMode.classList.remove('hidden');
+      this.positionPopover();
+      const search = this.popover.querySelector('.prompt-popover-search');
+      if (search) search.focus();
     }
 
     truncate(text, max = 120) {
@@ -187,21 +378,28 @@
     }
 
     applyPrompt(prompt) {
+      // Legacy entry point: keep working for any callers that hand the
+      // picker a whole prompt object. Internal callers should prefer
+      // applyPromptText so they can pass already-substituted text.
+      this.applyPromptText(prompt.body);
+    }
+
+    applyPromptText(text) {
       const target = this.targetInput;
       if (!target) return;
 
-      // Replace selection (if any) with the prompt body; otherwise prepend
-      // the prompt to whatever is already there.
+      // Replace selection (if any) with the resolved text; otherwise
+      // insert at the caret. Surrounding text is preserved on both sides.
       const existing = target.value || '';
       const start = target.selectionStart ?? existing.length;
       const end = target.selectionEnd ?? existing.length;
       const before = existing.slice(0, start);
       const after = existing.slice(end);
-      const next = `${before}${prompt.body}${after}`;
+      const next = `${before}${text}${after}`;
 
       target.value = next;
       // Place cursor at the end of the inserted text.
-      const caret = start + prompt.body.length;
+      const caret = start + text.length;
       try { target.setSelectionRange(caret, caret); } catch {}
       target.focus();
 
