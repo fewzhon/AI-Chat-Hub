@@ -251,6 +251,18 @@ class AiChatHub {
       messagesEmpty: $('messagesEmpty'),
       chatModelLabel: $('chatModelLabel'),
       clearChatBtn: $('clearChatBtn'),
+      quickChatPromptPicker: $('quickChatPromptPicker'),
+
+      // Prompts management view
+      promptsManageView: $('promptsManageView'),
+      promptsList: $('promptsList'),
+      promptsForm: $('promptsForm'),
+      promptsAddBtn: $('promptsAddBtn'),
+      promptsBackBtn: $('promptsBackBtn'),
+      promptTitleInput: $('promptTitleInput'),
+      promptBodyInput: $('promptBodyInput'),
+      promptSaveBtn: $('promptSaveBtn'),
+      promptCancelBtn: $('promptCancelBtn'),
 
       // Settings modal
       settingsModal: $('settingsModal'),
@@ -275,6 +287,14 @@ class AiChatHub {
     // conversations don't reset on every tab switch.
     this.compareView = null;
 
+    // Prompt library (shared between Quick Chat picker, Compare picker,
+    // and the manage view). Loaded asynchronously during init.
+    this.promptLibrary = new PromptLibrary();
+    this.quickChatPicker = null;
+    this.editingPromptId = null;
+    this.previousViewBeforeManage = 'welcomeScreen';
+    this.previousSiteKeyBeforeManage = null;
+
     this.init();
   }
 
@@ -283,6 +303,11 @@ class AiChatHub {
     this.renderTabBar();
     this.setupEventListeners();
     this.elements.chatModelLabel.textContent = `Gemini · ${GEMINI_MODEL}`;
+
+    await this.promptLibrary.load();
+    this.setupPromptPickers();
+    this.setupPromptManageView();
+
     await this.loadSettings();
     await this.loadChatHistory();
     this.updateSendButtonState();
@@ -503,8 +528,144 @@ class AiChatHub {
     this.compareView = new CompareView({
       root: this.elements.compareContainer,
       canPopout: true,
+      promptLibrary: this.promptLibrary,
+      onManagePrompts: () => this.showPromptsManageView(),
     });
     this.compareView.init();
+  }
+
+  // ------------------------------------------------------------------
+  // Prompt library: pickers and manage view
+  // ------------------------------------------------------------------
+
+  setupPromptPickers() {
+    this.quickChatPicker = new PromptPicker({
+      anchorBtn: this.elements.quickChatPromptPicker,
+      targetInput: this.elements.messageInput,
+      library: this.promptLibrary,
+      onManageClick: () => this.showPromptsManageView(),
+    });
+  }
+
+  showPromptsManageView() {
+    // Remember where we came from so the Back button returns there.
+    this.previousViewBeforeManage = this.findCurrentViewName() || 'welcomeScreen';
+    this.previousSiteKeyBeforeManage = this.currentSiteKey;
+    this.hidePromptForm();
+    this.showView('promptsManageView', null);
+    this.renderPromptsList();
+  }
+
+  findCurrentViewName() {
+    for (const name of ['welcomeScreen', 'webContainer', 'chatContainer', 'apiKeySetup', 'compareContainer', 'promptsManageView']) {
+      const el = this.elements[name];
+      if (el && !el.classList.contains('hidden')) return name;
+    }
+    return null;
+  }
+
+  setupPromptManageView() {
+    this.elements.promptsAddBtn.addEventListener('click', () => this.showPromptForm(null));
+    this.elements.promptsBackBtn.addEventListener('click', () => this.returnFromManageView());
+    this.elements.promptSaveBtn.addEventListener('click', () => this.savePromptForm());
+    this.elements.promptCancelBtn.addEventListener('click', () => this.hidePromptForm());
+
+    // Live-refresh the list whenever the underlying library changes.
+    this.promptLibrary.subscribe(() => {
+      if (this.elements.promptsManageView.classList.contains('hidden')) return;
+      this.renderPromptsList();
+    });
+  }
+
+  returnFromManageView() {
+    const view = this.previousViewBeforeManage || 'welcomeScreen';
+    const siteKey = this.previousSiteKeyBeforeManage;
+    if (siteKey && SITE_CONFIGS[siteKey]) {
+      this.handleOptionClick(siteKey);
+    } else {
+      this.showView(view, null);
+    }
+  }
+
+  renderPromptsList() {
+    const container = this.elements.promptsList;
+    container.innerHTML = '';
+    const prompts = this.promptLibrary.getAll();
+
+    if (prompts.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'prompts-manage-empty';
+      empty.textContent = 'No prompts yet. Click "+ New" to add one.';
+      container.appendChild(empty);
+      return;
+    }
+
+    for (const prompt of prompts) {
+      const item = document.createElement('div');
+      item.className = 'prompts-manage-item';
+
+      const text = document.createElement('div');
+      text.className = 'text';
+      const title = document.createElement('div');
+      title.className = 'title';
+      title.textContent = prompt.title;
+      const body = document.createElement('div');
+      body.className = 'body';
+      body.textContent = prompt.body;
+      text.appendChild(title);
+      text.appendChild(body);
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const editBtn = document.createElement('button');
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => this.showPromptForm(prompt.id));
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', () => this.confirmDeletePrompt(prompt));
+      actions.appendChild(editBtn);
+      actions.appendChild(deleteBtn);
+
+      item.appendChild(text);
+      item.appendChild(actions);
+      container.appendChild(item);
+    }
+  }
+
+  showPromptForm(id) {
+    this.editingPromptId = id;
+    const prompt = id ? this.promptLibrary.get(id) : null;
+    this.elements.promptTitleInput.value = prompt ? prompt.title : '';
+    this.elements.promptBodyInput.value = prompt ? prompt.body : '';
+    this.elements.promptsForm.classList.remove('hidden');
+    this.elements.promptTitleInput.focus();
+  }
+
+  hidePromptForm() {
+    this.editingPromptId = null;
+    this.elements.promptsForm.classList.add('hidden');
+    this.elements.promptTitleInput.value = '';
+    this.elements.promptBodyInput.value = '';
+  }
+
+  async savePromptForm() {
+    const title = this.elements.promptTitleInput.value.trim();
+    const body = this.elements.promptBodyInput.value;
+    if (!title) { alert('Please enter a title.'); return; }
+    if (!body.trim()) { alert('Please enter the prompt body.'); return; }
+
+    if (this.editingPromptId) {
+      await this.promptLibrary.update(this.editingPromptId, { title, body });
+    } else {
+      await this.promptLibrary.add(title, body);
+    }
+    this.hidePromptForm();
+  }
+
+  async confirmDeletePrompt(prompt) {
+    if (!window.confirm(`Delete the prompt "${prompt.title}"? This cannot be undone.`)) return;
+    await this.promptLibrary.remove(prompt.id);
   }
 
   showWelcomeScreen() {

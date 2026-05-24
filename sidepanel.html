@@ -535,6 +535,259 @@
       flex-direction: column;
       overflow: hidden;
     }
+
+    /* ------------------------------------------------------------------ */
+    /*  Prompt picker (📋) button next to chat & broadcast inputs          */
+    /* ------------------------------------------------------------------ */
+    .prompt-picker-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg-muted);
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .prompt-picker-btn:hover,
+    .prompt-picker-btn.is-open {
+      color: var(--primary-color);
+      border-color: var(--primary-color);
+      background: var(--primary-color-soft);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Prompts management view                                            */
+    /* ------------------------------------------------------------------ */
+    .prompts-manage {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .prompts-manage-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .prompts-manage-header h2 {
+      flex: 1;
+      font-size: 17px;
+    }
+    .prompts-manage-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .prompts-manage-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .prompts-manage-item .text {
+      flex: 1;
+      min-width: 0;
+    }
+    .prompts-manage-item .title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--fg);
+      margin-bottom: 2px;
+    }
+    .prompts-manage-item .body {
+      font-size: 12px;
+      color: var(--fg-muted);
+      white-space: pre-wrap;
+      max-height: 4.5em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .prompts-manage-item .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .prompts-manage-item .actions button {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 11.5px;
+      cursor: pointer;
+    }
+    .prompts-manage-item .actions button:hover { background: var(--border); }
+    .prompts-manage-item .actions .delete:hover {
+      color: var(--accent-danger);
+      border-color: var(--accent-danger);
+    }
+    .prompts-manage-empty {
+      color: var(--fg-muted);
+      font-size: 13px;
+      text-align: center;
+      padding: 24px 16px;
+    }
+    .prompts-manage-form {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .prompts-manage-form input,
+    .prompts-manage-form textarea {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      background: var(--surface-2);
+      color: var(--fg);
+      font-family: inherit;
+    }
+    .prompts-manage-form textarea {
+      min-height: 120px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+    .prompts-manage-form input:focus,
+    .prompts-manage-form textarea:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    .prompts-manage-form-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .prompts-manage-form-actions button {
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .prompts-manage-form-actions .primary {
+      background: var(--primary-color);
+      color: white;
+    }
+    .prompts-manage-form-actions .secondary {
+      background: var(--surface-2);
+      color: var(--fg);
+      border-color: var(--border);
+    }
+    .prompts-manage-add-btn {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .prompts-manage-back-btn {
+      background: var(--surface-2);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Prompt picker popover (rendered at document.body, position:fixed)  */
+    /* ------------------------------------------------------------------ */
+    .prompt-popover {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 3000;
+    }
+    .prompt-popover-search {
+      padding: 9px 11px;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--fg);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      flex-shrink: 0;
+    }
+    .prompt-popover-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+      min-height: 80px;
+    }
+    .prompt-popover-empty {
+      padding: 18px 14px;
+      color: var(--fg-muted);
+      font-size: 12.5px;
+      text-align: center;
+    }
+    .prompt-popover-item {
+      display: block;
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      text-align: left;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .prompt-popover-item:hover { background: var(--surface-2); }
+    .prompt-popover-item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg);
+      margin-bottom: 1px;
+    }
+    .prompt-popover-item-body {
+      font-size: 11.5px;
+      color: var(--fg-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .prompt-popover-footer {
+      padding: 6px;
+      border-top: 1px solid var(--border);
+      background: var(--surface-2);
+      flex-shrink: 0;
+    }
+    .prompt-popover-manage {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--primary-color);
+      padding: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .prompt-popover-manage:hover { background: var(--primary-color-soft); }
   </style>
   <link rel="stylesheet" href="compare.css">
 </head>
@@ -611,8 +864,31 @@
       </div>
     </div>
     <div class="input-container">
+      <button id="quickChatPromptPicker" class="prompt-picker-btn" title="Insert a saved prompt">📋</button>
       <textarea id="messageInput" placeholder="Type your message..." rows="1"></textarea>
       <button id="sendBtn" title="Send Message">➤</button>
+    </div>
+  </div>
+
+  <!-- Prompts management view -->
+  <div id="promptsManageView" class="view hidden">
+    <div class="prompts-manage">
+      <div class="prompts-manage-header">
+        <h2>Prompts</h2>
+        <button id="promptsBackBtn" class="prompts-manage-back-btn">← Back</button>
+        <button id="promptsAddBtn" class="prompts-manage-add-btn">+ New</button>
+      </div>
+
+      <div id="promptsForm" class="prompts-manage-form hidden">
+        <input type="text" id="promptTitleInput" placeholder="Prompt title" maxlength="80">
+        <textarea id="promptBodyInput" placeholder="Prompt body..."></textarea>
+        <div class="prompts-manage-form-actions">
+          <button id="promptCancelBtn" class="secondary">Cancel</button>
+          <button id="promptSaveBtn" class="primary">Save</button>
+        </div>
+      </div>
+
+      <div id="promptsList" class="prompts-manage-list"></div>
     </div>
   </div>
 
@@ -669,6 +945,8 @@
     </div>
   </div>
 
+  <script src="prompt-library.js"></script>
+  <script src="prompt-picker.js"></script>
   <script src="compare-controller.js"></script>
   <script src="sidepanel.js"></script>
 </body>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI Chat Hub",
-  "version": "1.7",
-  "description": "Multi-AI side panel with a built-in Gemini API chat plus a Compare mode that broadcasts one prompt to several AIs at once.",
+  "version": "1.8",
+  "description": "Multi-AI side panel with a built-in Gemini API chat, a Compare mode that broadcasts one prompt to several AIs, and a saved prompt library.",
   "permissions": [
     "sidePanel",
     "storage",

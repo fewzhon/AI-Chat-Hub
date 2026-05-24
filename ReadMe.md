@@ -10,6 +10,7 @@ A versatile Chrome extension to access multiple AI assistants from a side panel 
 - **Persistent tab bar**: Always-visible scrollable tab strip at the top of the side panel. One click switches between any AI - no more navigating back to the welcome screen first.
 - **17 AI services out of the box**: Gemini, ChatGPT, Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek, Mistral, Poe, You.com, Qwen, Kimi, Z.ai, Genspark - plus a built-in Quick Chat using the Gemini API and a Compare mode that broadcasts one prompt to several AIs at once.
 - **Compare mode (multi-AI broadcast)**: Send a single prompt to Gemini, ChatGPT, Claude, Perplexity, and DeepSeek simultaneously. Each AI is shown in its own collapsible panel with a checkbox to toggle inclusion. Click "Pop out" to open the full-tab popout with 1/2/3-column layouts; the prompt and selected AIs carry over via `chrome.storage.session`.
+- **Prompt library**: Save commonly-used prompts and insert them with one click from Quick Chat or Compare via the 📋 picker. Search across saved titles and bodies; manage (add / edit / delete) prompts from a dedicated Prompts view. Comes pre-seeded with four starter prompts (deletable) and persists to `chrome.storage.local`.
 - **Light, Dark, and System themes**: Pick your preferred theme from settings; "System" automatically follows your OS preference and live-updates on changes.
 - **Direct API chat**: Talk to the Gemini API with your own key - send/receive messages with full conversation context, persisted locally. Defaults to `gemini-2.5-flash`. Your API key and chat history are stored locally via `chrome.storage.local`.
 - **Resilient iframe loading**: Each service has fallback URLs - if the main URL fails to embed, the extension automatically tries alternatives. Sites that can't be embedded show a clean "Open in new tab" fallback page.
@@ -54,6 +55,11 @@ AI-Chat-Hub/
     3.  Each panel can be collapsed, reloaded, or opened in a new browser tab via its mini-toolbar.
     4.  Click ↗ Pop out to open the same view in a full browser tab with 1, 2, or 3-column layouts.
     5.  Selectors for each AI's prompt input and send button are bundled in `broadcast-injector.js` and may need occasional tuning if a site redesigns its DOM. Failures show as a per-panel error stripe; they don't break other panels.
+- **Prompt library**:
+    1.  Click the 📋 button next to the Quick Chat input or the Compare prompt bar.
+    2.  Pick a saved prompt to insert it into the input (it replaces any selected text, or inserts at the cursor).
+    3.  Click "Manage prompts..." in the picker to open the Prompts management view in the side panel (add / edit / delete).
+    4.  Prompts are stored locally via `chrome.storage.local` and live-update across the side panel and popout if you edit them in one place.
 - **API Chat (Quick Chat)**:
     1.  Click the ✨ Quick Chat tab.
     2.  On first use you'll be asked for a Gemini API key. Get one from [Google AI Studio](https://aistudio.google.com/app/apikey).
