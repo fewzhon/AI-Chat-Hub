@@ -793,6 +793,16 @@
       font-weight: 500;
       cursor: pointer;
     }
+    .prompts-manage-secondary-btn {
+      background: var(--surface-2);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .prompts-manage-secondary-btn:hover { background: var(--border); }
     .prompts-manage-back-btn {
       background: var(--surface-2);
       color: var(--fg);
@@ -1144,8 +1154,11 @@
       <div class="prompts-manage-header">
         <h2>Prompts</h2>
         <button id="promptsBackBtn" class="prompts-manage-back-btn">← Back</button>
+        <button id="promptsImportBtn" class="prompts-manage-secondary-btn" title="Import prompts from a JSON file">📥 Import</button>
+        <button id="promptsExportBtn" class="prompts-manage-secondary-btn" title="Download all prompts as a JSON file">📤 Export</button>
         <button id="promptsAddBtn" class="prompts-manage-add-btn">+ New</button>
       </div>
+      <input type="file" id="promptsImportFile" accept="application/json,.json" class="hidden">
 
       <div id="promptsForm" class="prompts-manage-form hidden">
         <input type="text" id="promptTitleInput" placeholder="Prompt title" maxlength="80">

@@ -70,6 +70,11 @@ AI-Chat-Hub/
     -   When you select a template that has variables, the picker swaps to a small fill-in form with one auto-resizing field per unique variable. Press `Enter` to advance between fields, `Enter` on the last field (or click **Insert**) to commit, `Esc` to back out to the list.
     -   Prompts that use variables get a small `⟨N fields⟩` badge in the list so you know what to expect.
     -   Leave a field blank and the literal `{{name}}` stays in the inserted text (useful for partial templates).
+- **Import / Export prompt library**:
+    -   In the Prompts management view, click **📤 Export** to download your entire library as a JSON file named like `ai-chat-hub-prompts-YYYY-MM-DD.json`.
+    -   Click **📥 Import** to pick a previously-exported file (or any JSON shaped like `{ "prompts": [...] }` / a bare array). Imported prompts are always **added** with fresh ids - existing prompts are never overwritten, so importing the same file twice will produce duplicates rather than data loss.
+    -   Entries missing a title or body are skipped and counted in the summary so partial / corrupted files don't kill the whole import.
+    -   Export format: `{ "format": "ai-chat-hub-prompts", "version": 1, "exportedAt": <ms>, "prompts": [{ "id", "title", "body", "createdAt", "updatedAt" }, ...] }`.
 - **Quick Chat — streaming & Markdown**:
     -   Replies stream in as Gemini generates them; a blinking cursor marks the active assistant message.
     -   Common Markdown is rendered automatically (bold, italics, `inline code`, fenced code blocks with language hints, ordered/unordered lists, headings, horizontal rules, links).

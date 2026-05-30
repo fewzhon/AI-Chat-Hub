@@ -262,6 +262,9 @@ class AiChatHub {
       promptsForm: $('promptsForm'),
       promptsAddBtn: $('promptsAddBtn'),
       promptsBackBtn: $('promptsBackBtn'),
+      promptsImportBtn: $('promptsImportBtn'),
+      promptsExportBtn: $('promptsExportBtn'),
+      promptsImportFile: $('promptsImportFile'),
       promptTitleInput: $('promptTitleInput'),
       promptBodyInput: $('promptBodyInput'),
       promptSaveBtn: $('promptSaveBtn'),
@@ -831,11 +834,96 @@ class AiChatHub {
     this.elements.promptSaveBtn.addEventListener('click', () => this.savePromptForm());
     this.elements.promptCancelBtn.addEventListener('click', () => this.hidePromptForm());
 
+    this.elements.promptsExportBtn.addEventListener('click', () => this.exportPrompts());
+    this.elements.promptsImportBtn.addEventListener('click', () => {
+      // Reset the input first so picking the same file twice still fires `change`.
+      this.elements.promptsImportFile.value = '';
+      this.elements.promptsImportFile.click();
+    });
+    this.elements.promptsImportFile.addEventListener('change', (e) => this.handleImportFile(e));
+
     // Live-refresh the list whenever the underlying library changes.
     this.promptLibrary.subscribe(() => {
       if (this.elements.promptsManageView.classList.contains('hidden')) return;
       this.renderPromptsList();
     });
+  }
+
+  exportPrompts() {
+    const data = this.promptLibrary.serializeForExport();
+    if (!data.prompts || data.prompts.length === 0) {
+      alert('Your prompt library is empty - nothing to export.');
+      return;
+    }
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const today = new Date();
+    const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ai-chat-hub-prompts-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async handleImportFile(event) {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    if (!file) return;
+
+    let text;
+    try {
+      text = await file.text();
+    } catch (err) {
+      alert(`Could not read the file: ${err.message || err}.`);
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      alert('That file is not valid JSON. Please choose a file exported from this extension.');
+      return;
+    }
+
+    // Accept either the wrapped export envelope or a bare array of
+    // prompts for tolerance with hand-edited files.
+    let rawPrompts;
+    if (Array.isArray(parsed)) {
+      rawPrompts = parsed;
+    } else if (parsed && Array.isArray(parsed.prompts)) {
+      if (parsed.format && parsed.format !== 'ai-chat-hub-prompts') {
+        if (!window.confirm(`File format is "${parsed.format}" (expected "ai-chat-hub-prompts"). Try to import anyway?`)) return;
+      }
+      rawPrompts = parsed.prompts;
+    } else {
+      alert('That JSON does not look like a prompt export. Expected an array of prompts or an object with a "prompts" array.');
+      return;
+    }
+
+    if (rawPrompts.length === 0) {
+      alert('That file contains no prompts.');
+      return;
+    }
+
+    if (!window.confirm(`Import ${rawPrompts.length} prompt${rawPrompts.length === 1 ? '' : 's'}? They will be added to your existing library.`)) return;
+
+    const result = await this.promptLibrary.importPrompts(rawPrompts);
+    if (result.error) {
+      alert(`Import failed: ${result.error}`);
+      return;
+    }
+
+    const lines = [`Imported ${result.added} prompt${result.added === 1 ? '' : 's'}.`];
+    if (result.skipped > 0) {
+      lines.push(`Skipped ${result.skipped} entr${result.skipped === 1 ? 'y' : 'ies'} (missing title or body).`);
+    }
+    alert(lines.join('\n'));
   }
 
   returnFromManageView() {
