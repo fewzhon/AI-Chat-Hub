@@ -212,6 +212,99 @@
       text-align: center;
     }
 
+    /* Two-mode popover: list of platforms + custom-platform form.
+       Shares the .add-tab-popover container. */
+    .add-tab-mode { display: block; }
+    .add-tab-mode.hidden { display: none; }
+
+    /* Divider between built-in platforms and the "Custom platform..."
+       entry in the picker list. */
+    .add-tab-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+    .add-tab-row-custom .add-tab-row-icon {
+      color: var(--primary-color);
+      font-weight: 600;
+    }
+
+    /* Custom-platform form pane. */
+    .add-tab-custom-header {
+      padding: 10px 12px 4px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg);
+    }
+    .add-tab-custom-tip {
+      padding: 0 12px 8px;
+      font-size: 11.5px;
+      color: var(--fg-muted);
+      line-height: 1.4;
+    }
+    .add-tab-custom-fields {
+      padding: 4px 12px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .add-tab-custom-field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .add-tab-custom-field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--fg-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .add-tab-custom-field-input {
+      padding: 6px 9px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--surface-2);
+      color: var(--fg);
+      font-size: 12.5px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .add-tab-custom-field-input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    .add-tab-custom-error {
+      padding: 0 12px 4px;
+      color: var(--accent-danger, #c0392b);
+      font-size: 11.5px;
+    }
+    .add-tab-custom-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      padding: 8px 12px 12px;
+    }
+    .add-tab-custom-cancel,
+    .add-tab-custom-submit {
+      padding: 5px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .add-tab-custom-cancel {
+      background: var(--surface);
+      color: var(--fg);
+      border-color: var(--border);
+    }
+    .add-tab-custom-cancel:hover { background: var(--border); }
+    .add-tab-custom-submit {
+      background: var(--primary-color);
+      color: white;
+    }
+
     .tab-bar-divider {
       width: 1px;
       background: var(--border);
