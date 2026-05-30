@@ -7,7 +7,7 @@ A versatile Chrome extension to access multiple AI assistants from a side panel 
 
 ## ✨ Features
 
-- **Customisable, persistent tab bar**: Always-visible scrollable tab strip at the top of the side panel. One click switches between any AI - no more navigating back to the welcome screen first.
+- **Customisable, persistent tab bar (starts empty)**: Always-visible scrollable tab strip at the top of the side panel. On first install the bar is **empty** so you only see the AI services you actually use - the welcome screen guides you to add your first one via the **+** button.
     -   **Drag to reorder** any tab to whatever position you like.
     -   **Hover a tab and click ×** to remove it from your tab bar. Built-in platforms can be re-added at any time; custom platforms (see below) are deleted when their tab is removed.
     -   **Click +** at the end of the tab bar to pick from the remaining built-in platforms, or to add a **Custom platform** of your own (name, URL, icon emoji). Custom platforms behave just like built-ins after they're added - reorderable, removable, persistent across reloads.

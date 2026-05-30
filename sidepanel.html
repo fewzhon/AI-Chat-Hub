@@ -373,6 +373,51 @@
     .welcome-screen-content h2 { margin-bottom: 6px; font-size: 19px; font-weight: 600; text-align: center; }
     .welcome-screen-content > p { color: var(--fg-muted); margin-bottom: 18px; font-size: 13px; text-align: center; }
 
+    /* Onboarding empty state, rendered when userTabOrder is empty. */
+    .welcome-empty {
+      background: var(--surface);
+      border: 1px dashed var(--border-strong, var(--border));
+      border-radius: 10px;
+      padding: 28px 22px;
+      text-align: center;
+      margin: 8px 0 22px;
+    }
+    .welcome-empty-icon {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+    .welcome-empty h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .welcome-empty > p {
+      color: var(--fg-muted);
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+    .welcome-empty-cta {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: filter 0.15s;
+    }
+    .welcome-empty-cta:hover { filter: brightness(1.08); }
+    .welcome-empty-tip {
+      color: var(--fg-muted);
+      font-size: 11.5px;
+      margin: 14px 0 0;
+      line-height: 1.4;
+    }
+
+    .welcome-section.hidden { display: none; }
+
     .section-heading {
       font-size: 11px;
       font-weight: 600;
@@ -1296,14 +1341,30 @@
       <h2>AI Chat Hub</h2>
       <p>Pick an AI to load it in the side panel, or use Quick Chat with the Gemini API.</p>
 
-      <div class="section-heading">Direct API</div>
-      <div class="option-cards" id="apiCards"></div>
+      <!-- Onboarding empty state: shown when the user has zero tabs in
+           their tab bar (fresh install, or after they've removed all). -->
+      <div id="welcomeEmpty" class="welcome-empty hidden">
+        <div class="welcome-empty-icon" aria-hidden="true">✨</div>
+        <h3>Welcome to AI Chat Hub</h3>
+        <p>Your tab bar is empty. Pick the AI services you actually use - add them with the <strong>+</strong> button above and they'll appear here.</p>
+        <button id="welcomeEmptyAddBtn" class="welcome-empty-cta">+ Add your first platform</button>
+        <p class="welcome-empty-tip">Tip: you can also add any other AI URL of your own via the <strong>Custom platform…</strong> entry in the picker.</p>
+      </div>
 
-      <div class="section-heading">Compare</div>
-      <div class="option-cards" id="compareCards"></div>
+      <div class="welcome-section" data-section="api">
+        <div class="section-heading">Direct API</div>
+        <div class="option-cards" id="apiCards"></div>
+      </div>
 
-      <div class="section-heading">Web Services</div>
-      <div class="option-cards" id="webCards"></div>
+      <div class="welcome-section" data-section="compare">
+        <div class="section-heading">Compare</div>
+        <div class="option-cards" id="compareCards"></div>
+      </div>
+
+      <div class="welcome-section" data-section="web">
+        <div class="section-heading">Web Services</div>
+        <div class="option-cards" id="webCards"></div>
+      </div>
     </div>
   </div>
 

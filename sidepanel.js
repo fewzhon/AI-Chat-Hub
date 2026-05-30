@@ -184,30 +184,13 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models
 // past this count are dropped from BOTH UI and storage.
 const MAX_CHAT_HISTORY = 100;
 
-// Display order in tabs and on the welcome screen for first-time users.
-// Once the user reorders, removes, or adds tabs, their saved
-// `userTabOrder` (chrome.storage.local) takes over. Keep this list as
-// the canonical set of platforms shipped with the extension - any new
-// platform added here is available via the "+" picker.
-const DEFAULT_TAB_ORDER = [
-  'api',
-  'compare',
-  'gemini',
-  'chatgpt',
-  'claude',
-  'perplexity',
-  'copilot',
-  'grok',
-  'meta',
-  'deepseek',
-  'mistral',
-  'poe',
-  'you',
-  'qwen',
-  'kimi',
-  'zai',
-  'genspark',
-];
+// Initial tab order for first-time users. We deliberately ship an
+// EMPTY tab bar so new users get a clean welcome screen and curate
+// their own set via the "+" picker, instead of being dumped into a
+// noisy strip of 17 services they may never use. Anything still
+// declared in SITE_CONFIGS remains available - the "+" picker
+// surfaces every built-in not currently in the user's tab order.
+const DEFAULT_TAB_ORDER = [];
 
 class AiChatHub {
   constructor() {
@@ -962,6 +945,28 @@ class AiChatHub {
       else if (cfg.kind === 'compare') compareContainer.appendChild(row);
       else webContainer.appendChild(row);
     }
+
+    this.updateWelcomeEmptyState();
+  }
+
+  // Toggles the per-section visibility (hide a heading if its card list
+  // is empty) and the global empty-state hero (shown when the user has
+  // no tabs at all - typical for first install).
+  updateWelcomeEmptyState() {
+    const welcomeRoot = this.elements.welcomeScreen;
+    if (!welcomeRoot) return;
+
+    const sections = welcomeRoot.querySelectorAll('.welcome-section');
+    let visibleSections = 0;
+    sections.forEach((section) => {
+      const cards = section.querySelector('.option-cards');
+      const hasCards = cards && cards.children.length > 0;
+      section.classList.toggle('hidden', !hasCards);
+      if (hasCards) visibleSections += 1;
+    });
+
+    const empty = welcomeRoot.querySelector('#welcomeEmpty');
+    if (empty) empty.classList.toggle('hidden', visibleSections > 0);
   }
 
   // ------------------------------------------------------------------
@@ -974,6 +979,17 @@ class AiChatHub {
     this.elements.reloadTabBtn.addEventListener('click', () => this.reloadCurrentView());
 
     this.elements.settingsTabBtn.addEventListener('click', () => this.openSettings());
+
+    // CTA on the welcome empty state - opens the add-tab popover by
+    // virtually clicking the "+" button (which lives in the tab strip
+    // and is freshly built each renderTabBar).
+    const welcomeEmptyAddBtn = document.getElementById('welcomeEmptyAddBtn');
+    if (welcomeEmptyAddBtn) {
+      welcomeEmptyAddBtn.addEventListener('click', () => {
+        const addBtn = document.getElementById('addTabBtn');
+        if (addBtn) addBtn.click();
+      });
+    }
 
     this.elements.openInTabBtn.addEventListener('click', () => {
       const cfg = SITE_CONFIGS[this.currentSiteKey];
