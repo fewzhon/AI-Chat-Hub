@@ -253,6 +253,15 @@ class AiChatHub {
       promptSaveBtn: $('promptSaveBtn'),
       promptCancelBtn: $('promptCancelBtn'),
 
+      // Chat session switcher (Quick Chat header)
+      chatSessionTrigger: $('chatSessionTrigger'),
+      chatSessionName: $('chatSessionName'),
+      chatSessionMenu: $('chatSessionMenu'),
+      chatSessionMenuList: $('chatSessionMenuList'),
+      chatSessionNewBtn: $('chatSessionNewBtn'),
+      chatSessionRenameBtn: $('chatSessionRenameBtn'),
+      chatSessionDeleteBtn: $('chatSessionDeleteBtn'),
+
       // Settings modal
       settingsModal: $('settingsModal'),
       closeSettingsBtn: $('closeSettingsBtn'),
@@ -263,7 +272,13 @@ class AiChatHub {
     };
 
     this.apiKey = null;
-    this.chatHistory = [];
+    // Quick Chat conversation sessions. The active session's history
+    // is the single source of truth - every read goes through
+    // this.sessions, no more this.chatHistory alias. See
+    // chat-sessions.js for the data layer.
+    this.sessions = new ChatSessions({ maxTurns: MAX_CHAT_HISTORY });
+    this.sessionsMenuOpen = false;
+    this.sessionsMenuOutsideHandler = null;
     this.isChatPending = false;
     this.loadAttempts = {};
     this.currentSiteKey = null;
@@ -319,7 +334,15 @@ class AiChatHub {
     this.setupPromptManageView();
 
     await this.loadSettings();
-    await this.loadChatHistory();
+
+    // Sessions handle their own persistence + migration from the
+    // legacy single-history key. After load(), there is always
+    // exactly one active session - it may be empty for new users.
+    await this.sessions.load();
+    this.setupChatSessionUI();
+    this.refreshChatSessionDisplay();
+    this.renderActiveSessionMessages();
+
     this.updateSendButtonState();
     await this.loadLastState();
   }
@@ -1639,7 +1662,7 @@ class AiChatHub {
     this.autoResizeTextarea();
     this.updateSendButtonState();
 
-    this.appendChatTurn({ role: 'user', text });
+    await this.appendChatTurn({ role: 'user', text });
 
     this.isChatPending = true;
     this.updateSendButtonState();
@@ -1669,12 +1692,11 @@ class AiChatHub {
       contentEl.innerHTML = window.renderMarkdown(fullText);
       this.scrollMessagesToBottom();
 
-      // Persist the complete turn now that we have it all.
-      this.chatHistory.push({ role: 'model', text: fullText });
-      if (this.chatHistory.length > MAX_CHAT_HISTORY) {
-        this.chatHistory = this.chatHistory.slice(-MAX_CHAT_HISTORY);
-      }
-      this.saveChatHistory();
+      // Persist the complete turn against the active session - we DON'T
+      // call appendChatTurn here because the bubble is already in the
+      // DOM (built incrementally during streaming) and re-rendering it
+      // would cause a flash.
+      await this.sessions.appendTurn({ role: 'model', text: fullText });
     } catch (err) {
       this.removeTypingIndicator(typingEl);
       // If a bubble was created but the stream then failed, drop it so
@@ -1695,8 +1717,12 @@ class AiChatHub {
       `${GEMINI_API_BASE}/${GEMINI_MODEL}:streamGenerateContent` +
       `?alt=sse&key=${encodeURIComponent(this.apiKey)}`;
 
+    // The active session's history IS the multi-turn context. Each
+    // session keeps its own isolated thread, so the model never sees
+    // turns from a different conversation.
+    const history = this.sessions.getActiveHistory();
     const body = {
-      contents: this.chatHistory.map((turn) => ({
+      contents: history.map((turn) => ({
         role: turn.role,
         parts: [{ text: turn.text }],
       })),
@@ -1801,13 +1827,12 @@ class AiChatHub {
     return `Request failed: ${err && err.message ? err.message : 'unknown error'}.`;
   }
 
-  appendChatTurn(turn) {
-    this.chatHistory.push(turn);
-    if (this.chatHistory.length > MAX_CHAT_HISTORY) {
-      this.chatHistory = this.chatHistory.slice(-MAX_CHAT_HISTORY);
-    }
+  async appendChatTurn(turn) {
+    // Persist into the active session AND render the bubble. Used for
+    // user turns; assistant streaming turns are persisted separately
+    // because their DOM is already in place from incremental rendering.
+    await this.sessions.appendTurn(turn);
     this.renderMessage(turn.role, turn.text);
-    this.saveChatHistory();
   }
 
   renderMessage(role, text, opts) {
@@ -1892,38 +1917,210 @@ class AiChatHub {
   }
 
   confirmClearChatHistory() {
-    if (this.chatHistory.length === 0) return;
-    if (!window.confirm('Clear the entire Quick Chat conversation? This cannot be undone.')) return;
-    this.clearChatHistory();
+    const active = this.sessions.getActive();
+    if (!active || active.history.length === 0) return;
+    if (!window.confirm(`Clear "${active.title}"? Its messages will be removed but the conversation itself stays.`)) return;
+    this.clearActiveSession();
     this.closeSettings();
   }
 
-  async clearChatHistory() {
-    this.chatHistory = [];
-    this.elements.messages.innerHTML = '';
-    if (this.elements.messagesEmpty) {
-      this.elements.messages.appendChild(this.elements.messagesEmpty);
-      this.elements.messagesEmpty.classList.remove('hidden');
+  async clearActiveSession() {
+    await this.sessions.clearActive();
+    this.renderActiveSessionMessages();
+  }
+
+  // ----------------------------------------------------------------
+  // Conversation session UI (Quick Chat header dropdown)
+  // ----------------------------------------------------------------
+
+  setupChatSessionUI() {
+    if (!this.elements.chatSessionTrigger) return;
+
+    this.elements.chatSessionTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleSessionMenu();
+    });
+
+    this.elements.chatSessionNewBtn.addEventListener('click', async () => {
+      this.closeSessionMenu();
+      await this.createNewSession();
+    });
+
+    this.elements.chatSessionRenameBtn.addEventListener('click', async () => {
+      this.closeSessionMenu();
+      await this.renameActiveSession();
+    });
+
+    this.elements.chatSessionDeleteBtn.addEventListener('click', async () => {
+      this.closeSessionMenu();
+      await this.deleteActiveSession();
+    });
+
+    // Re-render the menu + header whenever the data layer changes.
+    this.sessions.subscribe(() => {
+      this.refreshChatSessionDisplay();
+      // If the menu is open, keep it in sync too.
+      if (this.sessionsMenuOpen) this.renderSessionMenuList();
+    });
+  }
+
+  toggleSessionMenu() {
+    if (this.sessionsMenuOpen) this.closeSessionMenu();
+    else this.openSessionMenu();
+  }
+
+  openSessionMenu() {
+    this.renderSessionMenuList();
+    this.elements.chatSessionMenu.classList.remove('hidden');
+    this.sessionsMenuOpen = true;
+
+    // Click-outside dismissal. We attach lazily and detach on close so
+    // we don't fight other components for the document click target.
+    this.sessionsMenuOutsideHandler = (event) => {
+      if (
+        !this.elements.chatSessionMenu.contains(event.target) &&
+        !this.elements.chatSessionTrigger.contains(event.target)
+      ) {
+        this.closeSessionMenu();
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('click', this.sessionsMenuOutsideHandler);
+    }, 0);
+  }
+
+  closeSessionMenu() {
+    this.elements.chatSessionMenu.classList.add('hidden');
+    this.sessionsMenuOpen = false;
+    if (this.sessionsMenuOutsideHandler) {
+      document.removeEventListener('click', this.sessionsMenuOutsideHandler);
+      this.sessionsMenuOutsideHandler = null;
     }
-    await this.saveSetting('chatHistory', [], 'local');
   }
 
-  async loadChatHistory() {
-    const { chatHistory } = await this.loadSetting('chatHistory', 'local', []);
-    if (!Array.isArray(chatHistory) || chatHistory.length === 0) return;
+  renderSessionMenuList() {
+    const list = this.elements.chatSessionMenuList;
+    if (!list) return;
+    list.innerHTML = '';
 
-    this.chatHistory = chatHistory.filter(
-      (turn) => turn && typeof turn.text === 'string' && (turn.role === 'user' || turn.role === 'model')
-    );
+    const sessions = this.sessions.list();
+    if (sessions.length === 0) {
+      // ChatSessions always keeps at least one, so this branch is
+      // defensive only - shows a placeholder if the invariant breaks.
+      const empty = document.createElement('div');
+      empty.className = 'chat-session-menu-empty';
+      empty.textContent = 'No conversations yet.';
+      list.appendChild(empty);
+      return;
+    }
 
-    if (this.chatHistory.length === 0) return;
+    // Most-recently-updated first so frequent conversations float to
+    // the top. Stable across renders because updatedAt only changes
+    // on actual mutations.
+    const sorted = sessions.slice().sort((a, b) => b.updatedAt - a.updatedAt);
 
-    if (this.elements.messagesEmpty) this.elements.messagesEmpty.classList.add('hidden');
-    for (const turn of this.chatHistory) this.renderMessage(turn.role, turn.text);
+    for (const session of sorted) {
+      const isActive = session.id === this.sessions.activeId;
+      const item = document.createElement('button');
+      item.className = 'chat-session-menu-item' + (isActive ? ' is-active' : '');
+      item.setAttribute('role', 'menuitem');
+
+      const check = document.createElement('span');
+      check.className = 'session-check';
+      check.textContent = isActive ? '●' : '';
+      item.appendChild(check);
+
+      const title = document.createElement('span');
+      title.className = 'session-title-text';
+      title.textContent = session.title;
+      item.appendChild(title);
+
+      const count = document.createElement('span');
+      count.className = 'session-count';
+      count.textContent = session.history.length > 0
+        ? `${session.history.length}`
+        : '';
+      item.appendChild(count);
+
+      item.addEventListener('click', async () => {
+        this.closeSessionMenu();
+        if (!isActive) await this.switchToSession(session.id);
+      });
+
+      list.appendChild(item);
+    }
   }
 
-  async saveChatHistory() {
-    await this.saveSetting('chatHistory', this.chatHistory, 'local');
+  refreshChatSessionDisplay() {
+    const active = this.sessions.getActive();
+    if (!active || !this.elements.chatSessionName) return;
+    this.elements.chatSessionName.textContent = active.title;
+    this.elements.chatSessionTrigger.title = `${active.title} - click to switch`;
+  }
+
+  async switchToSession(id) {
+    await this.sessions.setActive(id);
+    this.renderActiveSessionMessages();
+  }
+
+  async createNewSession() {
+    await this.sessions.create();
+    this.renderActiveSessionMessages();
+    // Move focus to the message input so the user can start typing
+    // straight away in the fresh session.
+    if (this.elements.messageInput) {
+      try { this.elements.messageInput.focus(); } catch (_) { /* noop */ }
+    }
+  }
+
+  async renameActiveSession() {
+    const active = this.sessions.getActive();
+    if (!active) return;
+    const next = window.prompt('Rename conversation:', active.title);
+    if (next === null) return; // user cancelled
+    const ok = await this.sessions.rename(active.id, next);
+    if (!ok) {
+      window.alert('Please enter a non-empty title.');
+    }
+  }
+
+  async deleteActiveSession() {
+    const active = this.sessions.getActive();
+    if (!active) return;
+    const msg = active.history.length > 0
+      ? `Delete "${active.title}" and its ${active.history.length} message${active.history.length === 1 ? '' : 's'}? This cannot be undone.`
+      : `Delete the empty conversation "${active.title}"?`;
+    if (!window.confirm(msg)) return;
+    await this.sessions.delete(active.id);
+    this.renderActiveSessionMessages();
+  }
+
+  // Re-renders the messages pane from the currently-active session's
+  // history. Called after every session switch / create / delete /
+  // clear so the DOM stays in sync with the data layer.
+  renderActiveSessionMessages() {
+    const messages = this.elements.messages;
+    if (!messages) return;
+
+    messages.innerHTML = '';
+    // Re-attach the persistent empty-state node so it survives wipes.
+    if (this.elements.messagesEmpty) {
+      messages.appendChild(this.elements.messagesEmpty);
+      this.elements.messagesEmpty.classList.add('hidden');
+    }
+
+    const active = this.sessions.getActive();
+    const history = active ? active.history : [];
+
+    if (history.length === 0) {
+      if (this.elements.messagesEmpty) {
+        this.elements.messagesEmpty.classList.remove('hidden');
+      }
+      return;
+    }
+
+    for (const turn of history) this.renderMessage(turn.role, turn.text);
+    this.scrollMessagesToBottom();
   }
 }
 
