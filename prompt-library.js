@@ -137,6 +137,51 @@
       return true;
     }
 
+    // Serialize the current library to a portable JSON-shaped object.
+    // The shape includes a `format` discriminator + a numeric `version`
+    // so future readers can detect older / newer exports and migrate.
+    serializeForExport() {
+      return {
+        format: 'ai-chat-hub-prompts',
+        version: 1,
+        exportedAt: Date.now(),
+        prompts: this.prompts.map((p) => ({
+          id: p.id,
+          title: p.title,
+          body: p.body,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+        })),
+      };
+    }
+
+    // Add prompts parsed from an exported file. Each entry is hydrated
+    // with a fresh id (so re-importing your own export never collides
+    // with existing prompts) and validated to require at minimum a
+    // non-empty title and a string body. Returns { added, skipped }.
+    async importPrompts(rawPrompts) {
+      if (!Array.isArray(rawPrompts)) {
+        return { added: 0, skipped: 0, error: 'Payload is not an array.' };
+      }
+      let added = 0;
+      let skipped = 0;
+      for (const raw of rawPrompts) {
+        if (!raw || typeof raw !== 'object') { skipped++; continue; }
+        const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+        const body = typeof raw.body === 'string' ? raw.body : '';
+        if (!title || !body.trim()) { skipped++; continue; }
+        // Force a fresh id so the import is always additive and cannot
+        // overwrite an existing prompt by accident.
+        this.prompts.push(this.hydrate({ title, body }));
+        added++;
+      }
+      if (added > 0) {
+        await this.persist();
+        this.notify();
+      }
+      return { added, skipped };
+    }
+
     async persist() {
       try {
         await chrome.storage.local.set({ [STORAGE_KEY]: this.prompts });
