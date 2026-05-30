@@ -308,10 +308,20 @@ class AiChatHub {
     this.addTabPopover = null;
     this.addTabHandlers = null;
 
+    // User-added platforms. Loaded from chrome.storage.local at init
+    // and merged into SITE_CONFIGS so the rest of the class treats
+    // them like built-in entries.
+    this.customPlatforms = {};
+
     this.init();
   }
 
   async init() {
+    // Load custom platforms BEFORE the tab order so SITE_CONFIGS is
+    // fully populated by the time renderTabBar reads it. Otherwise a
+    // saved tab order that contains custom keys would filter them out.
+    await this.loadCustomPlatforms();
+
     // Load the persisted tab order before any rendering so the first
     // paint already reflects the user's customisation.
     await this.loadTabOrder();
@@ -386,6 +396,16 @@ class AiChatHub {
     const wasActive = this.currentSiteKey === key;
     this.userTabOrder.splice(idx, 1);
     await this.saveTabOrder();
+
+    // Custom platforms are owned by the user, so removing the tab also
+    // deletes the platform record. Built-ins are kept available for
+    // re-adding via the "+" picker. (If the user wants to re-add a
+    // custom URL later, they can enter it again - keeping deleted URLs
+    // around in storage would be more confusing than helpful.)
+    if (this.isCustomPlatform(key)) {
+      await this.deleteCustomPlatform(key);
+    }
+
     this.renderTabBar();
     this.renderWelcomeCards();
 
@@ -399,6 +419,123 @@ class AiChatHub {
       this.currentSiteKey = null;
       this.showView('welcomeScreen', null);
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Custom platforms (user-added URLs)
+  // ------------------------------------------------------------------
+
+  async loadCustomPlatforms() {
+    try {
+      const stored = await chrome.storage.local.get({ customPlatforms: null });
+      const raw = stored.customPlatforms;
+      if (raw && typeof raw === 'object') {
+        for (const [id, entry] of Object.entries(raw)) {
+          if (!entry || typeof entry !== 'object') continue;
+          if (!entry.url || !entry.name) continue;
+          const cfg = this.normaliseCustomEntry(id, entry);
+          this.customPlatforms[id] = cfg;
+          SITE_CONFIGS[id] = cfg;
+        }
+      }
+    } catch (err) {
+      console.error('loadCustomPlatforms failed:', err);
+    }
+  }
+
+  async saveCustomPlatforms() {
+    try {
+      await chrome.storage.local.set({ customPlatforms: this.customPlatforms });
+    } catch (err) {
+      console.error('saveCustomPlatforms failed:', err);
+    }
+  }
+
+  normaliseCustomEntry(id, raw) {
+    return {
+      id,
+      name: String(raw.name).slice(0, 40),
+      url: String(raw.url),
+      icon: raw.icon || '🌐',
+      description: raw.description || 'Custom platform',
+      kind: 'web',
+      embeddable: true,
+      custom: true,
+      addedAt: raw.addedAt || Date.now(),
+    };
+  }
+
+  validateCustomPlatformUrl(input) {
+    let url;
+    try {
+      url = new URL(input);
+    } catch {
+      return { ok: false, error: 'That URL is not valid. Include the scheme (http:// or https://) and a hostname.' };
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      return { ok: false, error: 'Only http:// and https:// URLs are supported.' };
+    }
+    return { ok: true, url };
+  }
+
+  generateCustomPlatformId() {
+    let id;
+    do {
+      id = `custom_${Math.random().toString(36).slice(2, 10)}`;
+    } while (SITE_CONFIGS[id]);
+    return id;
+  }
+
+  async addCustomPlatform({ name, url, icon }) {
+    const trimmedName = String(name || '').trim();
+    if (!trimmedName) return { ok: false, error: 'Name is required.' };
+
+    const validation = this.validateCustomPlatformUrl(String(url || '').trim());
+    if (!validation.ok) return validation;
+
+    const id = this.generateCustomPlatformId();
+    const entry = this.normaliseCustomEntry(id, {
+      name: trimmedName,
+      url: validation.url.toString(),
+      icon: String(icon || '').trim() || '🌐',
+      addedAt: Date.now(),
+    });
+
+    this.customPlatforms[id] = entry;
+    SITE_CONFIGS[id] = entry;
+    await this.saveCustomPlatforms();
+
+    // Append to the tab bar and immediately activate.
+    this.userTabOrder.push(id);
+    await this.saveTabOrder();
+    this.renderTabBar();
+    this.renderWelcomeCards();
+    this.handleOptionClick(id);
+
+    return { ok: true, id };
+  }
+
+  isCustomPlatform(key) {
+    return typeof key === 'string' && key.startsWith('custom_');
+  }
+
+  // Minimal HTML-escape for the few places we still build markup via
+  // template strings (the srcdoc fallback iframes). Anywhere that can
+  // use textContent or setAttribute should prefer those.
+  escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async deleteCustomPlatform(id) {
+    if (!this.customPlatforms[id]) return;
+    delete this.customPlatforms[id];
+    delete SITE_CONFIGS[id];
+    await this.saveCustomPlatforms();
   }
 
   async reorderTabs(fromKey, toKey, insertBefore) {
@@ -452,11 +589,17 @@ class AiChatHub {
     btn.setAttribute('role', 'tab');
     btn.title = cfg.name;
     btn.draggable = true;
+    // Build the inner structure with innerHTML for the static markup,
+    // then assign user-controlled text via textContent / setAttribute so
+    // a custom platform's name or icon can never inject HTML.
     btn.innerHTML = `
-      <span class="tab-icon" aria-hidden="true">${cfg.icon}</span>
-      <span class="tab-label">${cfg.name}</span>
-      <span class="tab-close" role="button" aria-label="Remove ${cfg.name} tab" title="Remove">×</span>
+      <span class="tab-icon" aria-hidden="true"></span>
+      <span class="tab-label"></span>
+      <span class="tab-close" role="button" title="Remove">×</span>
     `;
+    btn.querySelector('.tab-icon').textContent = cfg.icon;
+    btn.querySelector('.tab-label').textContent = cfg.name;
+    btn.querySelector('.tab-close').setAttribute('aria-label', `Remove ${cfg.name} tab`);
     btn.addEventListener('click', (e) => {
       if (e.target.closest('.tab-close')) return; // close button handles itself
       this.handleOptionClick(key);
@@ -533,32 +676,21 @@ class AiChatHub {
   }
 
   openAddTabPopover(anchor) {
-    const available = this.getAvailablePlatforms();
     const popover = document.createElement('div');
     popover.className = 'add-tab-popover';
 
-    if (available.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'add-tab-empty';
-      empty.textContent = 'All platforms are in your tab bar.';
-      popover.appendChild(empty);
-    } else {
-      for (const key of available) {
-        const cfg = SITE_CONFIGS[key];
-        const row = document.createElement('button');
-        row.className = 'add-tab-row';
-        row.innerHTML = `
-          <span class="add-tab-row-icon" aria-hidden="true">${cfg.icon}</span>
-          <span class="add-tab-row-name"></span>
-        `;
-        row.querySelector('.add-tab-row-name').textContent = cfg.name;
-        row.addEventListener('click', () => {
-          this.closeAddTabPopover();
-          this.addTab(key);
-        });
-        popover.appendChild(row);
-      }
-    }
+    // List mode shows: every disabled built-in + a "Custom platform..."
+    // entry at the bottom. Switching to the custom form is in-place
+    // (no popover teardown) so the anchor positioning stays stable.
+    const listMode = document.createElement('div');
+    listMode.className = 'add-tab-mode add-tab-mode-list';
+    this.renderAddTabList(listMode);
+
+    const customMode = document.createElement('div');
+    customMode.className = 'add-tab-mode add-tab-mode-custom hidden';
+
+    popover.appendChild(listMode);
+    popover.appendChild(customMode);
 
     document.body.appendChild(popover);
     const rect = anchor.getBoundingClientRect();
@@ -588,6 +720,160 @@ class AiChatHub {
     this.addTabPopover = popover;
     this.addTabHandlers = { onDocClick, onKey, anchor };
     anchor.classList.add('is-open');
+  }
+
+  renderAddTabList(container) {
+    container.innerHTML = '';
+    const available = this.getAvailablePlatforms();
+
+    if (available.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'add-tab-empty';
+      empty.textContent = 'All built-in platforms are in your tab bar.';
+      container.appendChild(empty);
+    } else {
+      for (const key of available) {
+        const cfg = SITE_CONFIGS[key];
+        const row = document.createElement('button');
+        row.className = 'add-tab-row';
+        row.innerHTML = `
+          <span class="add-tab-row-icon" aria-hidden="true"></span>
+          <span class="add-tab-row-name"></span>
+        `;
+        row.querySelector('.add-tab-row-icon').textContent = cfg.icon;
+        row.querySelector('.add-tab-row-name').textContent = cfg.name;
+        row.addEventListener('click', () => {
+          this.closeAddTabPopover();
+          this.addTab(key);
+        });
+        container.appendChild(row);
+      }
+    }
+
+    // Always-present "Custom platform" entry at the bottom.
+    const divider = document.createElement('div');
+    divider.className = 'add-tab-divider';
+    container.appendChild(divider);
+
+    const customRow = document.createElement('button');
+    customRow.className = 'add-tab-row add-tab-row-custom';
+    customRow.innerHTML = `
+      <span class="add-tab-row-icon" aria-hidden="true">＋</span>
+      <span class="add-tab-row-name">Custom platform…</span>
+    `;
+    customRow.addEventListener('click', () => this.switchToCustomForm());
+    container.appendChild(customRow);
+  }
+
+  switchToCustomForm() {
+    if (!this.addTabPopover) return;
+    const listMode = this.addTabPopover.querySelector('.add-tab-mode-list');
+    const customMode = this.addTabPopover.querySelector('.add-tab-mode-custom');
+    listMode.classList.add('hidden');
+    customMode.classList.remove('hidden');
+    this.renderCustomForm(customMode);
+  }
+
+  switchBackToList() {
+    if (!this.addTabPopover) return;
+    const listMode = this.addTabPopover.querySelector('.add-tab-mode-list');
+    const customMode = this.addTabPopover.querySelector('.add-tab-mode-custom');
+    customMode.classList.add('hidden');
+    listMode.classList.remove('hidden');
+    this.renderAddTabList(listMode);
+  }
+
+  renderCustomForm(container) {
+    container.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'add-tab-custom-header';
+    header.textContent = 'Add a custom platform';
+    container.appendChild(header);
+
+    const tip = document.createElement('div');
+    tip.className = 'add-tab-custom-tip';
+    tip.textContent = 'Note: many sites block being embedded in iframes. If the site won\'t load here, use ↗ Open in new tab to launch it directly.';
+    container.appendChild(tip);
+
+    const fields = document.createElement('div');
+    fields.className = 'add-tab-custom-fields';
+
+    const nameInput = this.buildField(fields, 'Name', 'e.g. My Internal LLM');
+    const urlInput = this.buildField(fields, 'URL', 'https://example.com/chat');
+    urlInput.type = 'url';
+    const iconInput = this.buildField(fields, 'Icon (optional)', '🌐');
+    iconInput.maxLength = 4;
+    iconInput.style.maxWidth = '90px';
+
+    container.appendChild(fields);
+
+    const errorEl = document.createElement('div');
+    errorEl.className = 'add-tab-custom-error hidden';
+    container.appendChild(errorEl);
+
+    const actions = document.createElement('div');
+    actions.className = 'add-tab-custom-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'add-tab-custom-cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => this.switchBackToList());
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'add-tab-custom-submit';
+    addBtn.textContent = 'Add platform';
+    const submit = async () => {
+      errorEl.classList.add('hidden');
+      const result = await this.addCustomPlatform({
+        name: nameInput.value,
+        url: urlInput.value,
+        icon: iconInput.value,
+      });
+      if (!result.ok) {
+        errorEl.textContent = result.error;
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      this.closeAddTabPopover();
+    };
+    addBtn.addEventListener('click', submit);
+
+    [nameInput, urlInput, iconInput].forEach((input) => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          submit();
+        }
+      });
+    });
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(addBtn);
+    container.appendChild(actions);
+
+    nameInput.focus();
+  }
+
+  buildField(container, labelText, placeholder) {
+    const wrapper = document.createElement('label');
+    wrapper.className = 'add-tab-custom-field';
+
+    const label = document.createElement('span');
+    label.className = 'add-tab-custom-field-label';
+    label.textContent = labelText;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'add-tab-custom-field-input';
+    input.placeholder = placeholder;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+
+    wrapper.appendChild(label);
+    wrapper.appendChild(input);
+    container.appendChild(wrapper);
+    return input;
   }
 
   closeAddTabPopover() {
@@ -621,13 +907,19 @@ class AiChatHub {
       const card = document.createElement('div');
       card.className = 'option-card';
       card.dataset.site = key;
+      // Static structure via innerHTML; user-controlled fields via
+      // textContent so custom-platform names/descriptions can never
+      // inject HTML.
       card.innerHTML = `
-        <span class="card-icon">${cfg.icon}</span>
+        <span class="card-icon"></span>
         <div class="card-text">
-          <h3>${cfg.name}</h3>
-          <p>${cfg.description}</p>
+          <h3></h3>
+          <p></p>
         </div>
       `;
+      card.querySelector('.card-icon').textContent = cfg.icon;
+      card.querySelector('h3').textContent = cfg.name;
+      card.querySelector('p').textContent = cfg.description;
       card.addEventListener('click', () => this.handleOptionClick(key));
       row.appendChild(card);
 
@@ -729,6 +1021,7 @@ class AiChatHub {
     const cfg = siteKey ? SITE_CONFIGS[siteKey] : null;
     if (cfg && viewName !== 'welcomeScreen') {
       this.elements.serviceControlBar.classList.remove('hidden');
+      // textContent is always safe regardless of the name's contents.
       this.elements.siteName.textContent = `${cfg.icon} ${cfg.name}`;
       // Hide "Open in tab" for the API view since it has no URL.
       this.elements.openInTabBtn.classList.toggle('hidden', cfg.kind !== 'web');
@@ -1188,13 +1481,20 @@ class AiChatHub {
     const reason = cfg.reason || 'security restrictions';
     this.showView('webContainer', siteKey);
 
+    // The user-controlled fields (icon, name) and the reason string are
+    // HTML-escaped before interpolation so a malicious / silly custom
+    // platform name cannot inject markup into the srcdoc iframe.
+    const safeIcon = this.escapeHtml(cfg.icon);
+    const safeName = this.escapeHtml(cfg.name);
+    const safeReason = this.escapeHtml(reason);
+
     const messageHtml = `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:20px;text-align:center;background:#f8f9fa;color:#333;font-family:-apple-system,sans-serif;">
-        <div style="font-size:42px;margin-bottom:14px;">${cfg.icon}</div>
-        <h3 style="margin-bottom:10px;color:#1976d2;">${cfg.name}</h3>
-        <p style="color:#666;margin-bottom:6px;max-width:340px;">This service can't be embedded due to ${reason}.</p>
+        <div style="font-size:42px;margin-bottom:14px;">${safeIcon}</div>
+        <h3 style="margin-bottom:10px;color:#1976d2;">${safeName}</h3>
+        <p style="color:#666;margin-bottom:6px;max-width:340px;">This service can't be embedded due to ${safeReason}.</p>
         <p style="color:#666;margin-bottom:18px;max-width:340px;">Open it in a new browser tab instead.</p>
-        <button id="openInNewTab" style="background:#1976d2;color:white;border:none;padding:12px 22px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;">Open ${cfg.name} in New Tab</button>
+        <button id="openInNewTab" style="background:#1976d2;color:white;border:none;padding:12px 22px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;">Open ${safeName} in New Tab</button>
       </div>
     `;
     this.elements.webFrame.srcdoc = messageHtml;
@@ -1211,10 +1511,11 @@ class AiChatHub {
 
   showLoadErrorMessage(siteKey) {
     const cfg = SITE_CONFIGS[siteKey];
+    const safeName = this.escapeHtml(cfg.name);
     const errorHtml = `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:20px;text-align:center;background:#f5f5f5;color:#333;font-family:-apple-system,sans-serif;">
         <div style="font-size:42px;margin-bottom:14px;">⚠️</div>
-        <h3 style="margin-bottom:10px;color:#d32f2f;">Unable to load ${cfg.name}</h3>
+        <h3 style="margin-bottom:10px;color:#d32f2f;">Unable to load ${safeName}</h3>
         <p style="color:#666;margin-bottom:18px;max-width:340px;">
           The service might be unavailable or need login. Try opening it in a new tab first, then come back.
         </p>
