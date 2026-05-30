@@ -118,6 +118,100 @@
     .tab .tab-icon { font-size: 14px; line-height: 1; }
     .tab .tab-label { font-size: 12.5px; }
 
+    /* Per-tab close (×) button - hidden by default, fades in on hover/focus.
+       Position is inline so the tab width grows slightly when the × is
+       revealed; that's intentional and matches typical browser tab UX. */
+    .tab .tab-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      line-height: 1;
+      color: var(--fg-muted);
+      opacity: 0;
+      pointer-events: none;
+      margin-left: 2px;
+      transition: opacity 0.12s, background 0.12s, color 0.12s;
+    }
+    .tab:hover .tab-close,
+    .tab:focus-within .tab-close,
+    .tab.is-active .tab-close {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .tab .tab-close:hover {
+      background: var(--accent-danger, #c0392b);
+      color: white;
+    }
+
+    /* Drop indicator on either side of a tab during drag-and-drop. */
+    .tab.drop-before { box-shadow: inset 2px 0 0 0 var(--primary-color); }
+    .tab.drop-after { box-shadow: inset -2px 0 0 0 var(--primary-color); }
+    .tab.dragging { opacity: 0.45; }
+
+    /* "+" button appended to the end of the tab strip. */
+    .tab-add {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 100%;
+      padding: 0;
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--fg-muted);
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: color 0.15s, background 0.15s;
+    }
+    .tab-add:hover,
+    .tab-add.is-open {
+      color: var(--primary-color);
+      background: var(--primary-color-soft);
+    }
+
+    /* Popover that lists platforms not currently in the tab bar. */
+    .add-tab-popover {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+      max-height: 320px;
+      overflow-y: auto;
+      z-index: 3000;
+      padding: 4px 0;
+    }
+    .add-tab-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 8px 12px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      color: var(--fg);
+      font-size: 13px;
+      transition: background 0.12s;
+    }
+    .add-tab-row:hover { background: var(--surface-2); }
+    .add-tab-row-icon { font-size: 16px; line-height: 1; width: 22px; text-align: center; }
+    .add-tab-row-name { flex: 1; }
+    .add-tab-empty {
+      padding: 18px 14px;
+      color: var(--fg-muted);
+      font-size: 12.5px;
+      text-align: center;
+    }
+
     .tab-bar-divider {
       width: 1px;
       background: var(--border);

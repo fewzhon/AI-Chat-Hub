@@ -7,7 +7,11 @@ A versatile Chrome extension to access multiple AI assistants from a side panel 
 
 ## ✨ Features
 
-- **Persistent tab bar**: Always-visible scrollable tab strip at the top of the side panel. One click switches between any AI - no more navigating back to the welcome screen first.
+- **Customisable, persistent tab bar**: Always-visible scrollable tab strip at the top of the side panel. One click switches between any AI - no more navigating back to the welcome screen first.
+    -   **Drag to reorder** any tab to whatever position you like.
+    -   **Hover a tab and click ×** to remove it from your tab bar (the platform is not deleted - you can re-add it any time).
+    -   **Click +** at the end of the tab bar to pick from the remaining platforms; the chosen one is appended and immediately activated.
+    -   Your tab order is persisted in `chrome.storage.local` and survives reloads and browser restarts. The welcome-screen cards mirror your selection so you only see the platforms you actually use.
 - **17 AI services out of the box**: Gemini, ChatGPT, Claude, Perplexity, Copilot, Grok, Meta AI, DeepSeek, Mistral, Poe, You.com, Qwen, Kimi, Z.ai, Genspark - plus a built-in Quick Chat using the Gemini API and a Compare mode that broadcasts one prompt to several AIs at once.
 - **Compare mode (multi-AI broadcast)**: Send a single prompt to Gemini, ChatGPT, Claude, Perplexity, and DeepSeek simultaneously. Each AI is shown in its own collapsible panel with a checkbox to toggle inclusion. Click "Pop out" to open the full-tab popout with 1/2/3-column layouts; the prompt and selected AIs carry over via `chrome.storage.session`.
 - **Prompt library with variables**: Save commonly-used prompts as reusable templates and insert them with one click from Quick Chat or Compare via the 📋 picker. Templates support `{{placeholder}}` syntax — when you pick a template, the picker shows a small fill-in form (one field per unique variable) so you can customise it before inserting. Search across saved titles and bodies; manage (add / edit / delete) prompts from a dedicated Prompts view. Persists to `chrome.storage.local` and live-syncs between the side panel and the Compare popout.
@@ -92,7 +96,7 @@ AI-Chat-Hub/
 To add a new service, edit `sidepanel.js`:
 
 1. Add an entry to `SITE_CONFIGS` with `name`, `icon`, `description`, `url`, `fallbackUrls`, and `kind: 'web'`.
-2. Add its key to `TAB_ORDER` where you want it to appear in the tab bar.
+2. Add its key to `DEFAULT_TAB_ORDER` where you want it to appear by default for new installs (existing users keep their saved order; new platforms surface via the + picker).
 3. Add the host(s) to `host_permissions` in `manifest.json`.
 4. Add the bare domain to `requestDomains` in `rules.json` so the extension strips iframe-blocking headers for it.
 
