@@ -629,6 +629,47 @@ class AiChatHub {
     } catch (err) {
       console.error('loadCustomPlatforms failed:', err);
     }
+
+    // Reconcile dynamic rules so platforms saved before the runtime-
+    // permissions migration also get header-stripping (if the user
+    // still has permission). Each iteration is independent so one
+    // failure doesn't block the rest.
+    await this.reconcileCustomPlatformDynamicRules();
+  }
+
+  // Ensures every persisted custom platform with granted host
+  // permission also has its dynamic header-stripping rule registered.
+  // Called on every init - dynamic rules persist across browser
+  // restarts so most of the time this is a no-op, but it self-heals
+  // after a permission revoke/regrant or a migration.
+  async reconcileCustomPlatformDynamicRules() {
+    if (!chrome.declarativeNetRequest || !chrome.declarativeNetRequest.updateDynamicRules) return;
+    let existingIds = new Set();
+    try {
+      const rules = await chrome.declarativeNetRequest.getDynamicRules();
+      existingIds = new Set(rules.map((r) => r.id));
+    } catch (err) {
+      console.warn('reconcileCustomPlatformDynamicRules: getDynamicRules failed:', err);
+      return;
+    }
+
+    for (const [id, cfg] of Object.entries(this.customPlatforms)) {
+      const ruleId = this.computeDynamicRuleId(id);
+      if (existingIds.has(ruleId)) continue;
+      let origin;
+      try {
+        origin = `${new URL(cfg.url).origin}/*`;
+      } catch {
+        continue;
+      }
+      try {
+        const has = await chrome.permissions.contains({ origins: [origin] });
+        if (!has) continue; // permission revoked - rule would do nothing
+        await this.addCustomPlatformDynamicRule(id, cfg.url);
+      } catch (err) {
+        console.warn('reconcileCustomPlatformDynamicRules:', id, err);
+      }
+    }
   }
 
   async saveCustomPlatforms() {
@@ -681,17 +722,35 @@ class AiChatHub {
     const validation = this.validateCustomPlatformUrl(String(url || '').trim());
     if (!validation.ok) return validation;
 
+    // Runtime host-permission request. Without this, declarativeNetRequest
+    // can't strip X-Frame-Options/CSP for the new origin and most sites
+    // will refuse to load inside an iframe. The user sees a granular
+    // Chrome prompt for THIS specific domain only - not "all websites".
+    const permResult = await this.ensureCustomPlatformPermission(validation.url);
+    if (!permResult.ok) return permResult;
+
     const id = this.generateCustomPlatformId();
     const entry = this.normaliseCustomEntry(id, {
       name: trimmedName,
       url: validation.url.toString(),
       icon: String(icon || '').trim() || '🌐',
       addedAt: Date.now(),
+      origin: permResult.origin,
     });
 
     this.customPlatforms[id] = entry;
     SITE_CONFIGS[id] = entry;
     await this.saveCustomPlatforms();
+
+    // Register a per-platform header-stripping rule so the iframe can
+    // bypass X-Frame-Options/CSP, same as built-in platforms do via
+    // the static rules.json. Non-fatal if the rule fails - the iframe
+    // may still load if the target site doesn't set those headers.
+    try {
+      await this.addCustomPlatformDynamicRule(id, validation.url);
+    } catch (err) {
+      console.warn('addCustomPlatform: dynamic rule add failed:', err);
+    }
 
     // Append to the tab bar and immediately activate.
     this.userTabOrder.push(id);
@@ -701,6 +760,90 @@ class AiChatHub {
     this.handleOptionClick(id);
 
     return { ok: true, id };
+  }
+
+  // -----------------------------------------------------------------
+  // Runtime host permissions + dynamic header-stripping rules
+  // -----------------------------------------------------------------
+
+  // Asks Chrome for host permission on the URL's origin if we don't
+  // already have it. Must be called from a user gesture (a click) -
+  // every existing call site (the "Add" button) qualifies. Returns
+  // { ok: true, origin } on success, { ok: false, error } on denial.
+  async ensureCustomPlatformPermission(url) {
+    let origin;
+    try {
+      origin = `${new URL(url).origin}/*`;
+    } catch (err) {
+      return { ok: false, error: 'Could not parse the URL origin.' };
+    }
+    try {
+      const already = await chrome.permissions.contains({ origins: [origin] });
+      if (already) return { ok: true, origin };
+      const granted = await chrome.permissions.request({ origins: [origin] });
+      if (!granted) {
+        return {
+          ok: false,
+          error: 'Permission denied. Custom platforms need access to their domain so the side panel can load the page inside an iframe.',
+        };
+      }
+      return { ok: true, origin };
+    } catch (err) {
+      // Some test/incognito profiles surface permissions API errors.
+      return { ok: false, error: `Permission request failed: ${err.message}` };
+    }
+  }
+
+  // Maps a custom-platform id (e.g. "custom_abc123") to a stable
+  // numeric rule id well above the static rules.json range (1, 2, ...).
+  // 31-bit hash; collision space is 2^31 - effectively zero risk with
+  // <100 custom platforms.
+  computeDynamicRuleId(customId) {
+    let hash = 100000;
+    for (let i = 0; i < customId.length; i++) {
+      hash = (hash * 31 + customId.charCodeAt(i)) & 0x7fffffff;
+    }
+    return Math.max(hash, 100000);
+  }
+
+  async addCustomPlatformDynamicRule(customId, url) {
+    if (!chrome.declarativeNetRequest || !chrome.declarativeNetRequest.updateDynamicRules) return;
+    const hostname = new URL(url).hostname;
+    const ruleId = this.computeDynamicRuleId(customId);
+    const rule = {
+      id: ruleId,
+      priority: 1,
+      action: {
+        type: 'modifyHeaders',
+        responseHeaders: [
+          { header: 'x-frame-options', operation: 'remove' },
+          { header: 'X-Frame-Options', operation: 'remove' },
+          { header: 'content-security-policy', operation: 'remove' },
+          { header: 'Content-Security-Policy', operation: 'remove' },
+          { header: 'content-security-policy-report-only', operation: 'remove' },
+        ],
+      },
+      condition: {
+        // ||host^ is declarativeNetRequest's anchored host pattern.
+        // Matches host and any subdomain on any scheme/path.
+        urlFilter: `||${hostname}^`,
+        resourceTypes: ['main_frame', 'sub_frame', 'xmlhttprequest', 'script', 'stylesheet', 'image'],
+      },
+    };
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [ruleId],
+      addRules: [rule],
+    });
+  }
+
+  async removeCustomPlatformDynamicRule(customId) {
+    if (!chrome.declarativeNetRequest || !chrome.declarativeNetRequest.updateDynamicRules) return;
+    const ruleId = this.computeDynamicRuleId(customId);
+    try {
+      await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [ruleId] });
+    } catch (err) {
+      console.warn('removeCustomPlatformDynamicRule:', err);
+    }
   }
 
   isCustomPlatform(key) {
@@ -724,6 +867,12 @@ class AiChatHub {
     delete this.customPlatforms[id];
     delete SITE_CONFIGS[id];
     await this.saveCustomPlatforms();
+
+    // Tear down the header-stripping rule for this platform.
+    // We intentionally do NOT call chrome.permissions.remove here - if
+    // the user re-adds the same URL later, we'd rather skip the second
+    // prompt than be tidy about granted-but-unused origins.
+    await this.removeCustomPlatformDynamicRule(id);
   }
 
   async reorderTabs(fromKey, toKey, insertBefore) {
