@@ -40,16 +40,16 @@
   // and restored on the next popout, so it sticks across sessions.
   // ------------------------------------------------------------------
   const COMPARE_LAYOUT_KEY = 'compareLayoutV1';
-  // Default to "auto" in the popout - a wide desktop monitor should
-  // never open into a single-column stack just because that's what
-  // the side panel uses. The user can still pick "stack" explicitly
-  // and we'll remember it.
-  const DEFAULT_LAYOUT = 'auto';
+  // Default to "side-by-side-auto" in the popout - on a wide desktop
+  // monitor every AI fits in a row and stretches to share the width.
+  // The user can still pick any other layout and we'll remember it.
+  const DEFAULT_LAYOUT = 'side-by-side-auto';
   // Whitelist guards against stale or hand-edited storage values
   // breaking the popover. Anything not in here falls back to default.
   const KNOWN_LAYOUTS = [
-    'auto',
+    'side-by-side-auto',
     'side-by-side',
+    'auto',
     'stack',
     'grid-2',
     'grid-3',
