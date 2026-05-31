@@ -115,9 +115,32 @@
   gap: 10px;
 }
 
-/* Side-by-side: every panel is one vertical column, all visible at
-   once. No wrapping - horizontal scroll if the user has more panels
-   than the viewport can hold at the min-width. */
+/* Side-by-side (auto): every panel is one vertical column, all
+   visible at once. Panels stretch to fill the row when there's room
+   (1-N panels naturally share the viewport width), and only become a
+   fixed 380px + horizontal scroll when their natural width would
+   collapse below 380px. Best general-purpose desktop layout - hence
+   the default in compare.js. */
+.compare-panel-list.layout-side-by-side-auto {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 10px;
+}
+.compare-panel-list.layout-side-by-side-auto .compare-panel {
+  /* flex: <grow> <shrink> <basis>. grow=1 lets few panels fill the
+     row; shrink=0 prevents browsers from squashing below basis; basis
+     380px is the floor before horizontal scroll kicks in. */
+  flex: 1 0 380px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Side-by-side (fixed): every panel is exactly 420px wide. Predictable
+   column widths regardless of viewport - horizontal scrolls as soon
+   as more panels fit. Useful when comparing exact rendering. */
 .compare-panel-list.layout-side-by-side {
   display: flex;
   flex-direction: row;
