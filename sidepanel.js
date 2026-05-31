@@ -16,16 +16,22 @@
 // When 'system' is selected we follow `prefers-color-scheme` and live-update
 // on system changes.
 
+// =====================================================================
+// SITE_CONFIGS - the canonical catalogue of every tab the side panel
+// knows about. Each web entry carries a `region` ('international' or
+// 'chinese') so the "+" picker can group them; the picker reads
+// straight from this object, so anything added here automatically
+// appears in the picker the next time it opens. Custom user-added
+// platforms are merged in at runtime (see loadCustomPlatforms).
+// =====================================================================
 const SITE_CONFIGS = {
-  // Direct API chat (no iframe).
+  // ---- First-class / meta tabs (no region) -----------------------------
   api: {
     name: 'Quick Chat',
     icon: '✨',
     description: 'Chat directly with the Gemini API',
     kind: 'api',
   },
-
-  // Multi-AI Compare / broadcast mode (kind 'compare', no iframe URL).
   compare: {
     name: 'Compare',
     icon: '🔄',
@@ -33,16 +39,7 @@ const SITE_CONFIGS = {
     kind: 'compare',
   },
 
-  // ------ Existing iframe-based services -------------------------------
-  gemini: {
-    name: 'Gemini',
-    icon: '🤖',
-    description: "Google's advanced AI assistant",
-    url: 'https://gemini.google.com/',
-    fallbackUrls: ['https://gemini.google.com/app', 'https://bard.google.com/'],
-    embeddable: true,
-    kind: 'web',
-  },
+  // ---- INTERNATIONAL AI ------------------------------------------------
   chatgpt: {
     name: 'ChatGPT',
     icon: '💬',
@@ -51,24 +48,7 @@ const SITE_CONFIGS = {
     fallbackUrls: ['https://chat.openai.com/', 'https://platform.openai.com/'],
     embeddable: true,
     kind: 'web',
-  },
-  perplexity: {
-    name: 'Perplexity',
-    icon: '🔍',
-    description: 'AI-powered search and answers',
-    url: 'https://www.perplexity.ai/',
-    fallbackUrls: ['https://perplexity.ai/'],
-    embeddable: true,
-    kind: 'web',
-  },
-  copilot: {
-    name: 'Copilot',
-    icon: '🚀',
-    description: "Microsoft's AI assistant",
-    url: 'https://copilot.microsoft.com/chats',
-    fallbackUrls: ['https://copilot.microsoft.com/', 'https://www.bing.com/chat'],
-    embeddable: true,
-    kind: 'web',
+    region: 'international',
   },
   claude: {
     name: 'Claude',
@@ -78,89 +58,47 @@ const SITE_CONFIGS = {
     fallbackUrls: ['https://claude.ai/', 'https://claude.ai/chats'],
     embeddable: true,
     kind: 'web',
+    region: 'international',
   },
-  grok: {
-    name: 'Grok',
-    icon: '🌟',
-    description: 'AI from xAI',
-    url: 'https://grok.com/',
-    fallbackUrls: ['https://x.com/i/grok', 'https://accounts.x.ai/'],
+  copilot: {
+    name: 'Copilot',
+    icon: '🚀',
+    description: "Microsoft's AI assistant",
+    url: 'https://copilot.microsoft.com/chats',
+    fallbackUrls: ['https://copilot.microsoft.com/', 'https://www.bing.com/chat'],
     embeddable: true,
     kind: 'web',
+    region: 'international',
   },
-  meta: {
-    name: 'Meta AI',
-    icon: '🔮',
-    description: "Meta's AI assistant",
-    url: 'https://www.meta.ai/',
-    fallbackUrls: ['https://meta.ai/', 'https://ai.meta.com/'],
+  'copilot-gh': {
+    name: 'Copilot (GH)',
+    icon: '🐙',
+    description: "GitHub Copilot",
+    url: 'https://github.com/copilot',
+    fallbackUrls: ['https://github.com/features/copilot'],
     embeddable: true,
     kind: 'web',
+    region: 'international',
   },
-
-  // ------ New AI services added in v1.5 --------------------------------
-  deepseek: {
-    name: 'DeepSeek',
-    icon: '🐋',
-    description: 'DeepSeek chat',
-    url: 'https://chat.deepseek.com/',
-    fallbackUrls: ['https://www.deepseek.com/'],
+  felo: {
+    name: 'Felo',
+    icon: '🌐',
+    description: 'Felo AI search',
+    url: 'https://felo.ai/search',
+    fallbackUrls: ['https://felo.ai/'],
     embeddable: true,
     kind: 'web',
+    region: 'international',
   },
-  mistral: {
-    name: 'Mistral',
-    icon: '🌫️',
-    description: "Mistral's Le Chat",
-    url: 'https://chat.mistral.ai/chat',
-    fallbackUrls: ['https://chat.mistral.ai/', 'https://mistral.ai/'],
+  gemini: {
+    name: 'Gemini',
+    icon: '🤖',
+    description: "Google's advanced AI assistant",
+    url: 'https://gemini.google.com/',
+    fallbackUrls: ['https://gemini.google.com/app', 'https://bard.google.com/'],
     embeddable: true,
     kind: 'web',
-  },
-  poe: {
-    name: 'Poe',
-    icon: '🦜',
-    description: "Quora's multi-model AI",
-    url: 'https://poe.com/',
-    fallbackUrls: ['https://www.poe.com/'],
-    embeddable: true,
-    kind: 'web',
-  },
-  you: {
-    name: 'You.com',
-    icon: '🟣',
-    description: 'You.com AI search',
-    url: 'https://you.com/',
-    fallbackUrls: ['https://www.you.com/'],
-    embeddable: true,
-    kind: 'web',
-  },
-  qwen: {
-    name: 'Qwen',
-    icon: '🦅',
-    description: "Alibaba's Qwen Chat",
-    url: 'https://chat.qwen.ai/',
-    fallbackUrls: ['https://qwen.ai/', 'https://tongyi.aliyun.com/qianwen/'],
-    embeddable: true,
-    kind: 'web',
-  },
-  kimi: {
-    name: 'Kimi',
-    icon: '🌙',
-    description: "Moonshot AI's Kimi",
-    url: 'https://www.kimi.com/',
-    fallbackUrls: ['https://kimi.moonshot.cn/'],
-    embeddable: true,
-    kind: 'web',
-  },
-  zai: {
-    name: 'Z.ai',
-    icon: '⚡',
-    description: 'Zhipu GLM chat',
-    url: 'https://chat.z.ai/',
-    fallbackUrls: ['https://z.ai/'],
-    embeddable: true,
-    kind: 'web',
+    region: 'international',
   },
   genspark: {
     name: 'Genspark',
@@ -170,7 +108,248 @@ const SITE_CONFIGS = {
     fallbackUrls: ['https://genspark.ai/'],
     embeddable: true,
     kind: 'web',
+    region: 'international',
   },
+  grok: {
+    name: 'Grok',
+    icon: '🌟',
+    description: 'AI from xAI',
+    url: 'https://grok.com/',
+    fallbackUrls: ['https://x.com/i/grok', 'https://accounts.x.ai/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'international',
+  },
+  liner: {
+    name: 'Liner',
+    icon: '📏',
+    description: 'Liner AI research assistant',
+    url: 'https://getliner.com/',
+    fallbackUrls: ['https://getliner.com/search', 'https://liner.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'international',
+  },
+  meta: {
+    name: 'Meta AI',
+    icon: '🔮',
+    description: "Meta's AI assistant",
+    url: 'https://www.meta.ai/',
+    fallbackUrls: ['https://meta.ai/', 'https://ai.meta.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'international',
+  },
+  mistral: {
+    name: 'Mistral',
+    icon: '🌫️',
+    description: "Mistral's Le Chat",
+    url: 'https://chat.mistral.ai/chat',
+    fallbackUrls: ['https://chat.mistral.ai/', 'https://mistral.ai/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'international',
+  },
+  perplexity: {
+    name: 'Perplexity',
+    icon: '🔍',
+    description: 'AI-powered search and answers',
+    url: 'https://www.perplexity.ai/',
+    fallbackUrls: ['https://perplexity.ai/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'international',
+  },
+  poe: {
+    name: 'Poe',
+    icon: '🦜',
+    description: "Quora's multi-model AI",
+    url: 'https://poe.com/',
+    fallbackUrls: ['https://www.poe.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'international',
+  },
+  qwen: {
+    name: 'Qwen Chat',
+    icon: '🦅',
+    description: "Alibaba's Qwen Chat (international)",
+    url: 'https://chat.qwen.ai/',
+    fallbackUrls: ['https://qwen.ai/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'international',
+  },
+  you: {
+    name: 'You.com',
+    icon: '🟣',
+    description: 'You.com AI search',
+    url: 'https://you.com/',
+    fallbackUrls: ['https://www.you.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'international',
+  },
+  zai: {
+    name: 'Z.ai',
+    icon: '⚡',
+    description: "ZhiPu's GLM chat (international)",
+    url: 'https://chat.z.ai/',
+    fallbackUrls: ['https://z.ai/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'international',
+  },
+
+  // ---- CHINESE AI ------------------------------------------------------
+  chatglm: {
+    name: 'ChatGLM',
+    icon: '💎',
+    description: "ZhiPu's ChatGLM (China)",
+    url: 'https://chatglm.cn/main/alltoolsdetail',
+    fallbackUrls: ['https://chatglm.cn/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  deepseek: {
+    name: 'DeepSeek',
+    icon: '🐋',
+    description: 'DeepSeek chat',
+    url: 'https://chat.deepseek.com/',
+    fallbackUrls: ['https://www.deepseek.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  doubao: {
+    name: 'DouBao',
+    icon: '🥟',
+    description: "ByteDance's DouBao",
+    url: 'https://www.doubao.com/chat/',
+    fallbackUrls: ['https://www.doubao.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  ernie: {
+    name: 'Ernie Bot',
+    icon: '🐦',
+    description: "Baidu's Wenxin Yiyan",
+    url: 'https://yiyan.baidu.com/',
+    fallbackUrls: ['https://yiyan.baidu.com/welcome'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  kimi: {
+    name: 'Kimi',
+    icon: '🌙',
+    description: "Moonshot AI's Kimi",
+    url: 'https://www.kimi.com/',
+    fallbackUrls: ['https://kimi.moonshot.cn/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  lingguang: {
+    name: 'LingGuang',
+    icon: '🔥',
+    description: "Ant Group's LingGuang",
+    url: 'https://ling.com/',
+    fallbackUrls: ['https://www.ling.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  longcat: {
+    name: 'LongCat',
+    icon: '🐱',
+    description: "Meituan's LongCat",
+    url: 'https://longcat.chat/',
+    fallbackUrls: ['https://www.longcat.chat/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  metaso: {
+    name: 'MetaSo',
+    icon: '🔎',
+    description: 'MetaSota AI search',
+    url: 'https://metaso.cn/',
+    fallbackUrls: ['https://www.metaso.cn/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  minimax: {
+    name: 'MiniMax AI',
+    icon: '🎬',
+    description: "MiniMax's chat",
+    url: 'https://chat.minimaxi.com/',
+    fallbackUrls: ['https://www.minimaxi.com/', 'https://hailuoai.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  nami: {
+    name: 'NaMi AI Search',
+    icon: '🌊',
+    description: "360's NaMi AI Search",
+    url: 'https://n.cn/',
+    fallbackUrls: ['https://www.n.cn/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  tongyi: {
+    name: 'Qwen (Tongyi)',
+    icon: '🐲',
+    description: "Alibaba's Tongyi Qianwen (China)",
+    url: 'https://tongyi.aliyun.com/qianwen/',
+    fallbackUrls: ['https://tongyi.aliyun.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  sensechat: {
+    name: 'SenseChat',
+    icon: '👁️',
+    description: "SenseTime's SenseChat",
+    url: 'https://chat.sensetime.com/',
+    fallbackUrls: ['https://www.sensetime.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  stepfun: {
+    name: 'StepFun (Yuewen)',
+    icon: '👣',
+    description: "StepFun's Yuewen",
+    url: 'https://yuewen.cn/',
+    fallbackUrls: ['https://www.stepfun.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+  yuanbao: {
+    name: 'YuanBao',
+    icon: '💰',
+    description: "Tencent's YuanBao",
+    url: 'https://yuanbao.tencent.com/',
+    fallbackUrls: ['https://www.yuanbao.tencent.com/'],
+    embeddable: true,
+    kind: 'web',
+    region: 'chinese',
+  },
+};
+
+// Region labels displayed in the "+" picker. Order here is the
+// order the picker renders the section groups.
+const REGION_ORDER = ['international', 'chinese'];
+const REGION_LABELS = {
+  international: 'International AI',
+  chinese: 'Chinese AI',
 };
 
 // ----------------------------------------------------------------------
@@ -381,8 +560,11 @@ class AiChatHub {
   }
 
   getAvailablePlatforms() {
-    return DEFAULT_TAB_ORDER.filter(
-      (k) => SITE_CONFIGS[k] && !this.userTabOrder.includes(k)
+    // Pull the full set straight from SITE_CONFIGS (NOT DEFAULT_TAB_ORDER,
+    // which is intentionally empty so new installs land on a clean
+    // welcome screen). Otherwise the "+" picker would be empty.
+    return Object.keys(SITE_CONFIGS).filter(
+      (k) => !this.userTabOrder.includes(k)
     );
   }
 
@@ -738,22 +920,37 @@ class AiChatHub {
       empty.textContent = 'All built-in platforms are in your tab bar.';
       container.appendChild(empty);
     } else {
+      // Partition available platforms by category. Quick Chat and
+      // Compare are first-class meta tabs without a region - they get
+      // their own section above the regional groups so they're easy
+      // to find again if the user removed them.
+      const meta = [];
+      const byRegion = { international: [], chinese: [] };
+      const other = []; // custom user-added platforms or anything missing region
       for (const key of available) {
         const cfg = SITE_CONFIGS[key];
-        const row = document.createElement('button');
-        row.className = 'add-tab-row';
-        row.innerHTML = `
-          <span class="add-tab-row-icon" aria-hidden="true"></span>
-          <span class="add-tab-row-name"></span>
-        `;
-        row.querySelector('.add-tab-row-icon').textContent = cfg.icon;
-        row.querySelector('.add-tab-row-name').textContent = cfg.name;
-        row.addEventListener('click', () => {
-          this.closeAddTabPopover();
-          this.addTab(key);
-        });
-        container.appendChild(row);
+        if (!cfg) continue;
+        if (cfg.kind === 'api' || cfg.kind === 'compare') {
+          meta.push(key);
+        } else if (cfg.region && byRegion[cfg.region]) {
+          byRegion[cfg.region].push(key);
+        } else {
+          other.push(key);
+        }
       }
+
+      // Stable alphabetical ordering inside each region so the picker
+      // doesn't shuffle items around between renders.
+      const byName = (a, b) =>
+        (SITE_CONFIGS[a].name || '').localeCompare(SITE_CONFIGS[b].name || '');
+      for (const key of Object.keys(byRegion)) byRegion[key].sort(byName);
+      other.sort(byName);
+
+      this._appendAddTabSection(container, null, meta);
+      for (const region of REGION_ORDER) {
+        this._appendAddTabSection(container, REGION_LABELS[region], byRegion[region]);
+      }
+      this._appendAddTabSection(container, 'Your custom platforms', other);
     }
 
     // Always-present "Custom platform" entry at the bottom.
@@ -769,6 +966,37 @@ class AiChatHub {
     `;
     customRow.addEventListener('click', () => this.switchToCustomForm());
     container.appendChild(customRow);
+  }
+
+  // Helper used by renderAddTabList. Renders a labelled region section
+  // (heading + rows) into `container`. If `keys` is empty, nothing is
+  // appended - sections stay invisible until they have content. The
+  // `label` is omitted (no heading) for the meta section above the
+  // first regional group.
+  _appendAddTabSection(container, label, keys) {
+    if (!keys || keys.length === 0) return;
+    if (label) {
+      const heading = document.createElement('div');
+      heading.className = 'add-tab-section-heading';
+      heading.textContent = label;
+      container.appendChild(heading);
+    }
+    for (const key of keys) {
+      const cfg = SITE_CONFIGS[key];
+      const row = document.createElement('button');
+      row.className = 'add-tab-row';
+      row.innerHTML = `
+        <span class="add-tab-row-icon" aria-hidden="true"></span>
+        <span class="add-tab-row-name"></span>
+      `;
+      row.querySelector('.add-tab-row-icon').textContent = cfg.icon;
+      row.querySelector('.add-tab-row-name').textContent = cfg.name;
+      row.addEventListener('click', () => {
+        this.closeAddTabPopover();
+        this.addTab(key);
+      });
+      container.appendChild(row);
+    }
   }
 
   switchToCustomForm() {
