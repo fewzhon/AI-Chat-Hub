@@ -85,19 +85,85 @@
   min-height: 0;
 }
 
-/* Multi-column layouts (only used by the full-tab popout) */
+/* =====================================================================
+ * Multi-column layouts (only used by the full-tab popout). Adding a new
+ * layout = add a class here, add an <option> in compare.html, and add
+ * the value to KNOWN_LAYOUTS in compare.js.
+ *
+ * The popout defaults to `layout-auto` so users immediately get a
+ * desktop-friendly view; the side panel never gets these classes (it
+ * always uses the base flex-column stack defined above).
+ * =================================================================== */
+
+/* Stack: explicit re-assertion of the base flex-column layout. Useful
+   when switching FROM another layout class back to stack - the other
+   classes are removed and this one becomes the only marker. */
+.compare-panel-list.layout-stack {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  gap: 10px;
+}
+
+/* Auto: fits as many columns as will hold a comfortable 380px panel
+   width, then distributes leftover space. Behaves like "stack" on
+   narrow viewports and naturally fills a wide monitor. */
+.compare-panel-list.layout-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 10px;
+}
+
+/* Side-by-side: every panel is one vertical column, all visible at
+   once. No wrapping - horizontal scroll if the user has more panels
+   than the viewport can hold at the min-width. */
+.compare-panel-list.layout-side-by-side {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 10px;
+}
+.compare-panel-list.layout-side-by-side .compare-panel {
+  flex: 0 0 420px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Fixed-column grids. repeat(N, minmax(0, 1fr)) makes them ALWAYS
+   render N columns regardless of viewport width - the user is
+   intentionally asking for a specific column count here. */
 .compare-panel-list.layout-grid-2 {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 .compare-panel-list.layout-grid-3 {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
+.compare-panel-list.layout-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.compare-panel-list.layout-grid-5 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* Grid layouts get a tall min-height per panel so the iframes don't
+   collapse into a sliver when the viewport is tall enough to allow it.
+   side-by-side handles its own height via flex above. */
+.compare-panel-list.layout-auto .compare-panel,
 .compare-panel-list.layout-grid-2 .compare-panel,
-.compare-panel-list.layout-grid-3 .compare-panel {
+.compare-panel-list.layout-grid-3 .compare-panel,
+.compare-panel-list.layout-grid-4 .compare-panel,
+.compare-panel-list.layout-grid-5 .compare-panel {
   min-height: 480px;
 }
 
