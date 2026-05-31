@@ -183,7 +183,9 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
-      max-height: 320px;
+      /* With ~30 built-in platforms grouped by region, the picker can
+         get tall - cap at 70vh so it never blows past the viewport. */
+      max-height: min(480px, 70vh);
       overflow-y: auto;
       z-index: 3000;
       padding: 4px 0;
@@ -211,6 +213,18 @@
       font-size: 12.5px;
       text-align: center;
     }
+    /* Region heading inside the "+" picker. Sits above each group of
+       platform rows ("International AI", "Chinese AI", "Your custom
+       platforms"). Visually quiet so the rows below stay the focus. */
+    .add-tab-section-heading {
+      padding: 10px 12px 4px;
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+    }
+    .add-tab-section-heading:first-child { padding-top: 6px; }
 
     /* Two-mode popover: list of platforms + custom-platform form.
        Shares the .add-tab-popover container. */
