@@ -73,6 +73,289 @@
   color: var(--primary-color);
 }
 
+/* -------- Compare tabbar (chip roster + add) -------- */
+
+.compare-tabbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 38px;
+}
+
+.compare-tabbar-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1;
+  min-width: 0;
+  scrollbar-width: thin;
+}
+
+.compare-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--fg);
+  cursor: grab;
+  user-select: none;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+}
+.compare-chip:hover {
+  border-color: var(--primary-color);
+}
+.compare-chip.dragging { opacity: 0.4; cursor: grabbing; }
+.compare-chip.collapsed { opacity: 0.6; }
+.compare-chip.manual-only { border-style: dashed; }
+
+.compare-chip-icon { font-size: 13px; }
+.compare-chip-label {
+  font-weight: 500;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compare-chip-remove {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.compare-chip-remove:hover {
+  background: var(--accent-danger, #d33);
+  color: white;
+}
+
+.compare-tabbar-add {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--fg-muted);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.compare-tabbar-add:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--surface-2);
+}
+.compare-tabbar-add.at-capacity {
+  border-style: solid;
+  opacity: 0.5;
+}
+
+/* -------- + popover -------- */
+
+.compare-add-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 8px;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(420px, 70vh);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 8px;
+  z-index: 20;
+}
+.compare-add-head {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  padding: 4px 6px 8px;
+}
+.compare-add-section-heading {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-muted);
+  padding: 8px 6px 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.compare-add-section-heading:first-of-type {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+.compare-add-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.compare-add-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--fg);
+  text-align: left;
+  position: relative;
+}
+.compare-add-item:hover {
+  border-color: var(--primary-color);
+  background: var(--surface-2);
+}
+.compare-add-item.manual-only { border-style: dashed; }
+.compare-add-icon { font-size: 14px; flex-shrink: 0; }
+.compare-add-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.compare-add-count {
+  font-size: 10.5px;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+.compare-add-cap-notice {
+  font-size: 12.5px;
+  color: var(--accent-warning, #b87600);
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border-radius: 6px;
+}
+.compare-add-hint {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  padding: 8px 6px 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+}
+
+/* -------- Empty state -------- */
+
+.compare-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px 24px;
+  color: var(--fg-muted);
+}
+.compare-empty-heading {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: var(--fg);
+  font-weight: 600;
+}
+.compare-empty-sub {
+  margin: 0 0 16px;
+  font-size: 13px;
+  max-width: 360px;
+}
+.compare-empty-cta {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.compare-empty-cta:hover { opacity: 0.92; }
+
+/* -------- Transient toast (cap message etc) -------- */
+
+.compare-toast {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 30;
+}
+.compare-toast.visible { opacity: 1; }
+
+/* -------- Per-panel header bits -------- */
+
+.compare-panel-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--accent-warning, #c98300);
+  color: white;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: 2px;
+}
+
+.compare-icon-btn-danger:hover {
+  background: var(--accent-danger, #d33);
+  color: white;
+}
+
+.compare-panel-orphan {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+
 /* -------- Panel list -------- */
 
 .compare-panel-list {

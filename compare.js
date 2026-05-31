@@ -20,6 +20,34 @@
 
   const root = document.getElementById('compareRoot');
 
+  // Merge user-added custom platforms (stored by the side panel via
+  // sidepanel.js's customPlatforms key) into window.SITE_CONFIGS so
+  // any custom_xyz siteKey persisted in compareSessionV1 resolves
+  // correctly inside the popout. Built-in 30 platforms ship via
+  // platforms.js already.
+  try {
+    const stored = await chrome.storage.local.get({ customPlatforms: null });
+    const customs = stored.customPlatforms;
+    if (customs && typeof customs === 'object' && window.SITE_CONFIGS) {
+      for (const [id, raw] of Object.entries(customs)) {
+        if (!raw || typeof raw !== 'object' || !raw.url || !raw.name) continue;
+        if (window.SITE_CONFIGS[id]) continue; // never clobber built-ins
+        window.SITE_CONFIGS[id] = {
+          id,
+          name: String(raw.name).slice(0, 40),
+          icon: raw.icon || '🌐',
+          description: raw.description || 'Custom platform',
+          url: String(raw.url),
+          kind: 'web',
+          embeddable: true,
+          isCustom: true,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('compare: could not merge custom platforms', err);
+  }
+
   // The popout shares the prompt library, but doesn't expose the manage
   // view (that lives in the side panel). Clicking "Manage prompts..."
   // from the picker is a no-op here apart from closing the popover;
